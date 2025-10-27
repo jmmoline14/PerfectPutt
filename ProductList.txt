@@ -21,4 +21,4 @@ https://openmv.io/products/arduino-portenta-h7?srsltid=AfmBOopgmkdviYxj_fLG8GCTA
 
 Microprocessor:
 Portenta H7 (see above)
-(Potentially Arduino/ESP32 (to Decide))
+
