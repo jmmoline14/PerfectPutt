@@ -9,8 +9,12 @@ https://www.adafruit.com/product/492
 This will allow our user to easily pass input into the microcontroller locally on the device
 
 3. Pressure/Force sensor to measure the actual swing
-https://www.digikey.com/htmldatasheets/production/2381828/0/0/1/force-sensitive-resistor-fsr-.html?gclsrc=aw.ds&gad_source=1&gad_campaignid=120565755&gbraid=0AAAAADrbLlhiVO2X4tb4kz7_jZIGtwYQb&gclid=CjwKCAjwjffHBhBuEiwAKMb8pCNXMJlF2okCpBlnuxWnHoP2TJvkssQn8GTEJkIVXHSA8Kv6DTFDZBoCuh8QAvD_BwE
-This FSR will allow us to 
+https://buyinterlinkelectronics.com/products/fsr-ux-408
 
+This product will best help us determine force that has impacted the golf club
 
 4. Camera for eventual image processing
+THIS CAN INTERFACE WITH SPI
+https://www.robotshop.com/products/arducam-mini-camera-module-w-2mp-plus-ov2640-arduino
+(THIS FOR NOW BUT ONCE WE DECIDE ON A BOARD I'LL PROBABLY GET ONE SPECIFICALLY FOR THAT BOARD)
+
