@@ -18,3 +18,7 @@ THIS CAN INTERFACE WITH SPI
 https://www.robotshop.com/products/arducam-mini-camera-module-w-2mp-plus-ov2640-arduino
 (THIS FOR NOW BUT ONCE WE DECIDE ON A BOARD I'LL PROBABLY GET ONE SPECIFICALLY FOR THAT BOARD)
 
+
+Microprocessor:
+ESP32
+(Potentially Arduino/ESP32 (to Decide))
