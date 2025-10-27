@@ -14,8 +14,8 @@ https://buyinterlinkelectronics.com/products/fsr-ux-408
 This product will best help us determine force that has impacted the golf club
 
 4. Camera for eventual image processing
-THIS CAN INTERFACE WITH SPI
-https://www.robotshop.com/products/arducam-mini-camera-module-w-2mp-plus-ov2640-arduino
+Portenta H7 Machine Vision
+https://openmv.io/products/arduino-portenta-h7?srsltid=AfmBOopgmkdviYxj_fLG8GCTAMBBuBo1gvVgzhuVxVze7XNTFkiRunBb
 (THIS FOR NOW BUT ONCE WE DECIDE ON A BOARD I'LL PROBABLY GET ONE SPECIFICALLY FOR THAT BOARD)
 
 
