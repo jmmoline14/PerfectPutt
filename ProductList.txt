@@ -1,14 +1,16 @@
 Sensors (Joseph Moline)
 
 1. IMU (dead reckoning)
-
-
+https://www.mouser.com/ProductDetail/TDK-InvenSense/EV_ICM-20948?qs=u4fy%2FsgLU9Oeg9AkcS2y3A%3D%3D&mgh=1&srsltid=AfmBOoqSnmx5EifQ9Urh8UicyCTeBAsAwsUmUA4fLO7cPdMqIrrcgo1heII
+This IMU will allow for us to do our dead reckoning with minimum drift and is cost effective for an IMU
 
 2. Input sensor to start/stop dead reckoning process
-
+https://www.adafruit.com/product/492
+This will allow our user to easily pass input into the microcontroller locally on the device
 
 3. Pressure/Force sensor to measure the actual swing
-
+https://www.digikey.com/htmldatasheets/production/2381828/0/0/1/force-sensitive-resistor-fsr-.html?gclsrc=aw.ds&gad_source=1&gad_campaignid=120565755&gbraid=0AAAAADrbLlhiVO2X4tb4kz7_jZIGtwYQb&gclid=CjwKCAjwjffHBhBuEiwAKMb8pCNXMJlF2okCpBlnuxWnHoP2TJvkssQn8GTEJkIVXHSA8Kv6DTFDZBoCuh8QAvD_BwE
+This FSR will allow us to 
 
 
 4. Camera for eventual image processing
