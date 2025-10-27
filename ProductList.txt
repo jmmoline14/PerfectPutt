@@ -22,3 +22,6 @@ https://openmv.io/products/arduino-portenta-h7?srsltid=AfmBOopgmkdviYxj_fLG8GCTA
 Microprocessor:
 Portenta H7 (see above)
 
+Actual Golf Club:
+An actual putter will be necessary for this product to be tested by us, here is a cheap putter that I found:
+https://www.amazon.com/Generic-Aluminium-Enthusiasts-Supplies-Practice/dp/B0FF2PBQCF/ref=collections_p_dtp_xnewarr_ssruni_d_sccl_1_5/137-4995320-4160723?pd_rd_w=kQ0Vz&content-id=amzn1.sym.a43df92a-7409-410b-8cae-8c2277099d6d&pf_rd_p=a43df92a-7409-410b-8cae-8c2277099d6d&pf_rd_r=HZFEK0D9GMGQ5155B2XE&pd_rd_wg=Q2suD&pd_rd_r=8401e5ac-92b4-4b49-80dc-7d27567479dc&pd_rd_i=B0FF2PBQCF&psc=1
