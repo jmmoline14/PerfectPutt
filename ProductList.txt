@@ -1,1 +1,14 @@
+Sensors (Joseph Moline)
 
+1. IMU (dead reckoning)
+
+
+
+2. Input sensor to start/stop dead reckoning process
+
+
+3. Pressure/Force sensor to measure the actual swing
+
+
+
+4. Camera for eventual image processing
