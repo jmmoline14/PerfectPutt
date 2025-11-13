@@ -1,50 +1,42 @@
-#include "Arduino.h"
-#include <Wire.h>
-#define CAMERA_I2C_ADDRESS 0x48   //update with real addresses later
-#define LED_BUILTIN 13 
-#define IMU_I2C_ADDRESS 0x68
+#include "camera.h"
 
+/*-----Uncomment the library and class for your specific hardware-----*/
+//#include "himax.h"  // API to read from the Himax camera found on the Portenta Vision Shield Rev.1
+//HM01B0 himax;
 
+#include "hm0360.h" // API to read from the Himax camera found on the Portenta Vision Shield Rev.2
+HM0360 himax;
 
-void setup(){
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, LOW);
+Camera cam(himax);
+#define IMAGE_MODE CAMERA_GRAYSCALE
+FrameBuffer fb(320,240,2);
+
+unsigned long lastUpdate = 0;
+
+void setup() {
+  Serial.begin(250000);
+  //Init the cam QVGA, 30FPS
+  cam.begin(CAMERA_R320x240, IMAGE_MODE, 30);
 }
 
+void loop() {
+  // put your main code here, to run repeatedly:
+  if(!Serial) {    
+    Serial.begin(250000);
+    while(!Serial);
+  }
+  
+  // Time out after 2 seconds and send new data
+  bool timeoutDetected = millis() - lastUpdate > 2000;
 
-void loop(){
-    digitalWrite(LED_BUILTIN, LOW);
-    delay (1000);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay (1000);
+  // Wait until the receiver acknowledges
+  // that they are ready to receive new data
+  if(!timeoutDetected && Serial.read() != 1) return;
+
+  lastUpdate = millis();
+  
+  // Grab frame and write to serial
+  if (cam.grabFrame(fb, 3000) == 0) {
+    Serial.write(fb.getBuffer(), cam.frameSize());
+  }
 }
-// above is a blinking example, below is real I2C code
-/*
-void setup(){
-    Wire.begin();
-
-
-}
-void loop(){
-    uint8_t reg = 0x00;
-    Wire.beginTransmission(CAMERA_I2C_ADDRESS);
-    Wire.write(reg);
-    Wire.endTransmission();
-
-    delay(1000);
-
-    Wire.beginTransmission(IMU_I2C_ADDRESS);
-    Wire.write(reg);
-    Wire.endTransmission();
-
-
-
-    delay(1000);
-}
-
-
-*/
-
-
-
-
