@@ -30,3 +30,5 @@ https://www.amazon.com/Generic-Aluminium-Enthusiasts-Supplies-Practice/dp/B0FF2P
 Batter Pack:
 https://www.mi.com/global/product/mi-50w-power-bank-20000/
 (This is 50W, update if it turns out we need more)
+
+Test at the end
