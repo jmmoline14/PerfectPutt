@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>BLE Camera Viewer</title>
+
+<style>
+  body {
+    background: #111;
+    color: white;
+    font-family: "Segoe UI", Arial, sans-serif;
+    text-align: center;
+  }
+
+  #canvas {
+    background: black;
+    border: 2px solid #444;
+    margin-top: 20px;
+    image-rendering: pixelated;
+  }
+
+  button {
+    padding: 12px 24px;
+    font-size: 18px;
+    margin-top: 20px;
+    cursor: pointer;
+  }
+</style>
+</head>
+
+<body>
+
+<h1>BLE Camera Viewer</h1>
+<p>Shows camera feed via BLE.</p>
+
+<button id="connectBtn">Connect to Device</button>
+
+<canvas id="canvas" width="320" height="240"></canvas>
+
+<script>
+//Match these UUIDs to the Arduino.
+const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
+const CHAR_UUID    = "19b10000-e8f2-537e-4f6c-d104768a1214";
+
+const WIDTH  = 320;
+const HEIGHT = 240;
+const BYTES_PER_PIXEL = 2;
+const FRAME_SIZE = WIDTH * HEIGHT * BYTES_PER_PIXEL; // 153,600 bytes
+
+//Global state
+let bleDevice = null;
+let bleCharacteristic = null;
+
+let receiveBuffer = new Uint8Array(FRAME_SIZE);
+let receiveIndex = 0;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let imageData = ctx.createImageData(WIDTH, HEIGHT);
+
+async function connectToBLE() {
+  try {
+      bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "LED-Portenta-01" }],
+          optionalServices: [SERVICE_UUID],
+      });
+
+      const server = await bleDevice.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      bleCharacteristic = await service.getCharacteristic(CHAR_UUID);
+
+      //wait for incoming data
+      await bleCharacteristic.startNotifications();
+      bleCharacteristic.addEventListener("characteristicvaluechanged", onReceiveChunk);
+
+      console.log("Connected");
+      requestNextFrame();
+  }
+  catch (err) {
+      console.error(err);
+      alert("Could not connect: " + err);
+  }
+}
+
+//receive and handle BLE chunks
+function onReceiveChunk(event) {
+    //new chunk
+    const chunk = new Uint8Array(event.target.value.buffer);
+
+    //add it to image buffer
+    receiveBuffer.set(chunk, receiveIndex);
+    receiveIndex += chunk.length;
+
+    //draw whole frame if we receive all of it
+    if (receiveIndex >= FRAME_SIZE) {
+        displayFrame(receiveBuffer);
+        receiveIndex = 0;
+
+
+        requestNextFrame();
+    }
+}
+
+function requestNextFrame() {
+    if (!bleCharacteristic) return;
+    bleCharacteristic.writeValue(Uint8Array.of(1));
+}
+
+//convert data into image
+function displayFrame(rawBytes) {
+    let srcIndex = 0;
+
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+
+        
+        const low  = rawBytes[srcIndex];
+        const high = rawBytes[srcIndex + 1];
+        const pixel16 = (high << 8) | low;
+
+        const gray = pixel16 >> 8;
+
+        const dstIndex = (y * WIDTH + x) * 4;
+        imageData.data[dstIndex + 0] = gray;
+        imageData.data[dstIndex + 1] = gray;
+        imageData.data[dstIndex + 2] = gray;
+        imageData.data[dstIndex + 3] = 255;
+
+        srcIndex += 2;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
+
+document.getElementById("connectBtn").addEventListener("click", connectToBLE);
+</script>
+
+</body>
+</html>
