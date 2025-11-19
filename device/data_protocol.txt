@@ -1,0 +1,19 @@
+This is the data protocol for design 1, I'll add more once as we need it. The first byte 
+determines what the rest of the bytes mean.
+
+
+packet[0] = 0x00; //protocol byte, this lets you know the order of the rest
+  packet[1] = high byte x acceleration
+  packet[2] = low byte x acceleration
+  packet[3] = High byte y acceleration
+  packet[4] = low byte y acceleration
+  packet[5] = high byte z acceleration
+  packet[6] = low byte z acceleration
+  packet[7] =  high byte gyro x acceleration
+  packet[8] = low byte gyro x acceleration
+  packet[9] = high byte gyro y acceleration
+  packet[10] = low byte gyro y acceleration
+  packet[11] = high byte gyro z acceleration
+  packet[12] = low byte gyro z acceleration
+  packet[13] = FSR 1
+  packet[14] = FSR 2
