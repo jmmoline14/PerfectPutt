@@ -586,6 +586,7 @@ class MyHomePageState extends State<MyHomePage> {
               ),
             ),
             const SizedBox(height: 8),
+
             // CAMERA FEED AREA
             AspectRatio(
               aspectRatio: 4 / 3,
@@ -598,7 +599,53 @@ class MyHomePageState extends State<MyHomePage> {
                 child: _buildCameraView(),
               ),
             ),
+
+            const SizedBox(height: 12),
+
+            // -------------------------------
+            // --- NEW IMU CARD BELOW CAM ---
+            // -------------------------------
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "IMU Data",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "Accel: (x: 0.00, y: 0.00, z: 0.00)",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Gyro:  (x: 0.00, y: 0.00, z: 0.00)",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Mag:   (x: 0.00, y: 0.00, z: 0.00)",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             const SizedBox(height: 8),
+
             // CONTROL BUTTONS
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -621,7 +668,9 @@ class MyHomePageState extends State<MyHomePage> {
                   ),
               ],
             ),
+
             const SizedBox(height: 8),
+
             // DEVICE / SERVICES VIEW
             Expanded(
               child: _buildView(),
