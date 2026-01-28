@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'Perfect Putt',
         theme: ThemeData(
-          primarySwatch: Colors.blue,
+          primarySwatch: Colors.lightGreen,
         ),
         home: MyHomePage(title: 'Perfect Putt'),
       );
@@ -556,6 +556,7 @@ class MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: Text(widget.title),
+          centerTitle: true,
           actions: [
             if (!_isMock && _connectedDevice != null)
               IconButton(
@@ -580,6 +581,7 @@ class MyHomePageState extends State<MyHomePage> {
                       _isMock
                           ? 'Mode: Mock device (development)'
                           : 'Mode: Real BLE (Portenta H7)',
+                          textAlign: TextAlign.center,
                     ),
                   ),
                 ],
@@ -622,21 +624,25 @@ class MyHomePageState extends State<MyHomePage> {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       const Text(
                         "Accel: (x: 0.00, y: 0.00, z: 0.00)",
                         style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       const Text(
                         "Gyro:  (x: 0.00, y: 0.00, z: 0.00)",
                         style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       const Text(
                         "Mag:   (x: 0.00, y: 0.00, z: 0.00)",
                         style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
