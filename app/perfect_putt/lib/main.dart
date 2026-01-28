@@ -10,12 +10,44 @@ import 'package:permission_handler/permission_handler.dart';
 /// Toggle this for dev:
 /// true  = use fake/mock device (no real BLE needed)
 /// false = use real Arduino Portenta H7 over BLE
-const bool kUseMockDevice = true;
+const bool kUseMockDevice = false;
 
 /// UUIDs for the Portenta H7 camera stream.
 /// TODO: replace these with your real service/characteristic UUIDs.
 Guid kCameraServiceUuid = Guid("00000000-0000-0000-0000-000000000001");
 Guid kCameraCharUuid = Guid("00000000-0000-0000-0000-000000000002");
+Guid kimuServiceUuid = Guid("0075");
+Guid kimuCharUuid = Guid("0080");
+
+// Decode IMU Data into arrays of doubles
+bool decodeIMUData(List<int> value, 
+                    List<double> accelData, 
+                    List<double> gyroData, 
+                    List<double> magData) {
+  // Check that packet is correct size
+  int idealPacketSize = 25; // Mag data not currently used
+  if (value.length < idealPacketSize) return false;
+
+  // Convert to ByteData object
+  final byteData = ByteData.sublistView(
+    Uint8List.fromList(value),
+  );
+
+  // Accel data
+  accelData[0] = byteData.getFloat32(1, Endian.little);
+  accelData[1] = byteData.getFloat32(5, Endian.little);
+  accelData[2] = byteData.getFloat32(9, Endian.little);
+
+  // Gyro data
+  gyroData[0] = byteData.getFloat32(13, Endian.little);
+  gyroData[1] = byteData.getFloat32(17, Endian.little);
+  gyroData[2] = byteData.getFloat32(21, Endian.little);
+
+  // Don't update mag data
+
+  return true;
+}
+
 
 void main() {
   runApp(const MyApp());
@@ -54,6 +86,12 @@ class MyHomePageState extends State<MyHomePage> {
   // Camera feed state
   Uint8List? _latestFrame;
   StreamSubscription<List<int>>? _cameraSub;
+
+  // IMU Data state
+  List<String> _accelData = List.filled(3, "N/A");
+  List<String> _gyroData  = List.filled(3, "N/A");
+  List<String> _magData   = List.filled(3, "N/A");
+  StreamSubscription<List<int>>? _imuSub;
 
   // BLE scanning
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -164,9 +202,9 @@ class MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // ---------------------------
-  // CONNECT / SERVICES / CAMERA
-  // ---------------------------
+  // ---------------------------------
+  // CONNECT / SERVICES / CAMERA / IMU
+  // ---------------------------------
 
   Future<void> _connectToDevice(BluetoothDevice device) async {
     if (_isMock) return;
@@ -191,6 +229,54 @@ class MyHomePageState extends State<MyHomePage> {
     });
 
     await _attachCameraStreamFromServices();
+    await _attachIMUStreamFromServices();
+  }
+
+  Future<void> _attachIMUStreamFromServices() async {
+    _imuSub?.cancel();
+
+    BluetoothCharacteristic? imuChar;
+
+    for (final service in _services) {
+      if (service.uuid == kimuServiceUuid) {
+        for (final characteristic in service.characteristics) {
+          if (characteristic.uuid == kimuCharUuid) {
+            imuChar = characteristic;
+            break;
+          }
+        }
+      }
+      if (imuChar != null) {
+        break;
+      }
+    }
+
+    if (imuChar == null) {
+      // No imu characteristic found; just keep the rest of the UI working.
+      return;
+    }
+
+    _imuSub = imuChar.lastValueStream.listen((value) {
+      if (!mounted) return;
+
+      List<double> accel = List.filled(3, 0.0);;
+      List<double> gyro = List.filled(3, 0.0);;
+      List<double> mag = List.filled(3, 0.0);;
+
+      if (!decodeIMUData(value, accel, gyro, mag)) return;
+      
+      setState(() {
+        // Each notification contains one packet of IMU data
+        for (int i  = 0; i < 3; i++) {
+          _accelData[i] = accel[i].toStringAsFixed(2);
+          _gyroData[i]  = gyro[i].toStringAsFixed(2);
+          _magData[i]   = mag[i].toStringAsFixed(2);
+        }
+
+      });
+    });
+
+    await imuChar.setNotifyValue(true);
   }
 
   Future<void> _attachCameraStreamFromServices() async {
@@ -229,6 +315,8 @@ class MyHomePageState extends State<MyHomePage> {
   Future<void> _disconnect() async {
     _cameraSub?.cancel();
     _cameraSub = null;
+    _imuSub?.cancel();
+    _imuSub = null;
 
     await _disconnectDeviceSilently();
 
@@ -280,42 +368,44 @@ class MyHomePageState extends State<MyHomePage> {
     final List<Widget> containers = <Widget>[];
 
     for (BluetoothDevice device in widget.devicesList) {
-      containers.add(
-        SizedBox(
-          height: 60,
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Text(
-                      device.advName.isEmpty
-                          ? (device.platformName.isEmpty
-                              ? '(unknown device)'
-                              : device.platformName)
-                          : device.advName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      device.remoteId.toString(),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
+      if (!device.platformName.isEmpty) {
+        containers.add(
+          SizedBox(
+            height: 60,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        device.advName.isEmpty
+                            ? (device.platformName.isEmpty
+                                ? '(unknown device)'
+                                : device.platformName)
+                            : device.advName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        device.remoteId.toString(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              TextButton(
-                child: const Text(
-                  'Connect',
-                  style: TextStyle(color: Colors.black),
+                TextButton(
+                  child: const Text(
+                    'Connect',
+                    style: TextStyle(color: Colors.black),
+                  ),
+                  onPressed: () => _connectToDevice(device),
                 ),
-                onPressed: () => _connectToDevice(device),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
 
     return ListView(
@@ -627,20 +717,20 @@ class MyHomePageState extends State<MyHomePage> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        "Accel: (x: 0.00, y: 0.00, z: 0.00)",
+                      Text(
+                        "Accel: (x: ${_accelData[0]}, y: ${_accelData[1]}, z: ${_accelData[2]})",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        "Gyro:  (x: 0.00, y: 0.00, z: 0.00)",
+                      Text(
+                        "Gyro:  (x: ${_gyroData[0]}, y: ${_gyroData[1]}, z: ${_gyroData[2]})",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        "Mag:   (x: 0.00, y: 0.00, z: 0.00)",
+                      Text(
+                        "Mag:   (x: ${_magData[0]}, y: ${_magData[1]}, z: ${_magData[2]})",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
