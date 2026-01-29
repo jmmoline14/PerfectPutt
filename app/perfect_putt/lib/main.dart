@@ -644,7 +644,9 @@ class MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.lightGreen,
         appBar: AppBar(
+          backgroundColor: Colors.lightGreen,
           title: Text(widget.title),
           centerTitle: true,
           actions: [
@@ -691,9 +693,9 @@ class MyHomePageState extends State<MyHomePage> {
                 child: _buildCameraView(),
               ),
             ),
-
+            
             const SizedBox(height: 12),
-
+            
             // -------------------------------
             // --- NEW IMU CARD BELOW CAM ---
             // -------------------------------
