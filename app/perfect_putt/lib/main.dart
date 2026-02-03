@@ -86,7 +86,8 @@ class MyHomePageState extends State<MyHomePage> {
   // Camera feed state
   Uint8List? _latestFrame;
   StreamSubscription<List<int>>? _cameraSub;
-
+  //Camera Request
+  BluetoothCharacteristic? _cameraChar;
   // IMU Data state
   List<String> _accelData = List.filled(3, "N/A");
   List<String> _gyroData  = List.filled(3, "N/A");
@@ -119,6 +120,15 @@ class MyHomePageState extends State<MyHomePage> {
     _disconnectDeviceSilently();
     _writeController.dispose();
     super.dispose();
+  }
+
+  //Get Frame
+  Future<void> _requestFrame() async {
+    if(_isMock) return;
+    final c = _cameraChar;
+    if(c == null) return;
+    if(!(c.properties.write || c.properties.writeWithoutResponse)) return;
+    await c.write([0x01], withoutResponse: c.properties.writeWithoutResponse && !c.properties.write,);
   }
 
   // ---------------------------
@@ -300,6 +310,8 @@ class MyHomePageState extends State<MyHomePage> {
       // No camera characteristic found; just keep the rest of the UI working.
       return;
     }
+
+    _cameraChar = cameraChar;
 
     _cameraSub = cameraChar.lastValueStream.listen((value) {
       if (!mounted) return;
@@ -711,7 +723,7 @@ class MyHomePageState extends State<MyHomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ElevatedButton(
-                        onPressed: (){},
+                        onPressed: _requestFrame,
                         child: const Text("Scan Green"),
                       ),
                       const SizedBox(height: 12),
