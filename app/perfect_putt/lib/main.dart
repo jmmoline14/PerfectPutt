@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 /// Toggle this for dev:
 /// true  = use fake/mock device (no real BLE needed)
 /// false = use real Arduino Portenta H7 over BLE
-const bool kUseMockDevice = false;
+const bool kUseMockDevice = true;
 
 /// UUIDs for the Portenta H7 camera stream.
 /// TODO: replace these with your real service/characteristic UUIDs.
@@ -710,6 +710,11 @@ class MyHomePageState extends State<MyHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      ElevatedButton(
+                        onPressed: (){},
+                        child: const Text("Scan Green"),
+                      ),
+                      const SizedBox(height: 12),
                       const Text(
                         "IMU Data",
                         style: TextStyle(
