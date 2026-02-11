@@ -7,47 +7,29 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'ble/ble_communication.dart';
+import 'ai/ai_manager.dart';
+
 /// Toggle this for dev:
 /// true  = use fake/mock device (no real BLE needed)
 /// false = use real Arduino Portenta H7 over BLE
-const bool kUseMockDevice = true;
+const bool kUseMockDevice = false;
 
-/// UUIDs for the Portenta H7 camera stream.
-/// TODO: replace these with your real service/characteristic UUIDs.
-Guid kCameraServiceUuid = Guid("00000000-0000-0000-0000-000000000001");
-Guid kCameraCharUuid = Guid("00000000-0000-0000-0000-000000000002");
-Guid kimuServiceUuid = Guid("0075");
-Guid kimuCharUuid = Guid("0080");
 
-// Decode IMU Data into arrays of doubles
-bool decodeIMUData(List<int> value, 
-                    List<double> accelData, 
-                    List<double> gyroData, 
-                    List<double> magData) {
-  // Check that packet is correct size
-  int idealPacketSize = 25; // Mag data not currently used
-  if (value.length < idealPacketSize) return false;
+/***************************DEBUGGING/TESTING***************************/
 
-  // Convert to ByteData object
-  final byteData = ByteData.sublistView(
-    Uint8List.fromList(value),
+void test() {
+  final original = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    ballToHoleDist: 6.3,
+    holeCenterOffset: 2.1,
+    swingForce: 1.2,
+    swingAngle: 1.1,
+    followThroughDeg: 85.0
   );
-
-  // Accel data
-  accelData[0] = byteData.getFloat32(1, Endian.little);
-  accelData[1] = byteData.getFloat32(5, Endian.little);
-  accelData[2] = byteData.getFloat32(9, Endian.little);
-
-  // Gyro data
-  gyroData[0] = byteData.getFloat32(13, Endian.little);
-  gyroData[1] = byteData.getFloat32(17, Endian.little);
-  gyroData[2] = byteData.getFloat32(21, Endian.little);
-
-  // Don't update mag data
-
-  return true;
 }
 
+/***************************DEBUGGING/TESTING***************************/
 
 void main() {
   runApp(const MyApp());
@@ -60,7 +42,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'Perfect Putt',
         theme: ThemeData(
-          primarySwatch: Colors.lightGreen,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.white)
         ),
         home: MyHomePage(title: 'Perfect Putt'),
       );
@@ -93,6 +75,17 @@ class MyHomePageState extends State<MyHomePage> {
   List<String> _gyroData  = List.filled(3, "N/A");
   List<String> _magData   = List.filled(3, "N/A");
   StreamSubscription<List<int>>? _imuSub;
+
+  // Current input data state
+  PuttingMetrics _currMetrics = PuttingMetrics(putterToHoleDist: 0,
+                                              ballToHoleDist: 0,
+                                              holeCenterOffset: 0,
+                                              swingForce: 0,
+                                              swingAngle: 0,
+                                              followThroughDeg: 0);
+
+  // Storage for all data
+  final List<PuttingMetrics> _metricsStorage = [];
 
   // BLE scanning
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -273,6 +266,7 @@ class MyHomePageState extends State<MyHomePage> {
       List<double> gyro = List.filled(3, 0.0);;
       List<double> mag = List.filled(3, 0.0);;
 
+
       if (!decodeIMUData(value, accel, gyro, mag)) return;
       
       setState(() {
@@ -283,6 +277,8 @@ class MyHomePageState extends State<MyHomePage> {
           _magData[i]   = mag[i].toStringAsFixed(2);
         }
 
+        _currMetrics = PuttingMetrics.fromBytes(value);
+        _metricsStorage.add(_currMetrics);
       });
     });
 
@@ -656,9 +652,9 @@ class MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.lightGreen,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: Colors.lightGreen,
+          backgroundColor: Colors.white,
           title: Text(widget.title),
           centerTitle: true,
           actions: [
@@ -692,19 +688,6 @@ class MyHomePageState extends State<MyHomePage> {
               ),
             ),
             const SizedBox(height: 8),
-
-            // CAMERA FEED AREA
-            AspectRatio(
-              aspectRatio: 4 / 3,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _buildCameraView(),
-              ),
-            ),
             
             const SizedBox(height: 12),
             
@@ -724,7 +707,7 @@ class MyHomePageState extends State<MyHomePage> {
                     children: [
                       ElevatedButton(
                         onPressed: _requestFrame,
-                        child: const Text("Scan Green"),
+                        child: const Text("Start Continuous Data Collection"),
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -737,19 +720,37 @@ class MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Accel: (x: ${_accelData[0]}, y: ${_accelData[1]}, z: ${_accelData[2]})",
+                        "Distance between putter and hole: ${_currMetrics.putterToHoleDist}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Gyro:  (x: ${_gyroData[0]}, y: ${_gyroData[1]}, z: ${_gyroData[2]})",
+                        "Distance between ball and hole after swing: ${_currMetrics.ballToHoleDist}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Mag:   (x: ${_magData[0]}, y: ${_magData[1]}, z: ${_magData[2]})",
+                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Force of swing: ${_currMetrics.swingForce}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Angle of swing: ${_currMetrics.swingAngle}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Degree of follow through: ${_currMetrics.followThroughDeg}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
@@ -760,6 +761,10 @@ class MyHomePageState extends State<MyHomePage> {
             ),
 
             const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _startScan,
+              child: const Text("Export Training Data"),
+            ),
 
             // CONTROL BUTTONS
             Row(
