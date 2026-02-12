@@ -1,6 +1,10 @@
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:typed_data';
+import 'dart:io';
+
+import 'package:flutter_email_sender/flutter_email_sender.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
 
 class PuttingMetrics {
   final double putterToHoleDist;
@@ -24,10 +28,29 @@ class PuttingMetrics {
     required this.successfulShot,
   });
 
-  // Send data for training
+  // Export data for training
+  static void exportMetrics(List<PuttingMetrics> metrics, String subject, String email) {
+    Future<String> filePath = PuttingMetrics.createCsvFile(metrics);
 
-  // Encode data into CSV
-  static String metricsToCsv(List<PuttingMetrics> metrics) {
+    
+  }
+
+  // Create CSV file
+  // Returns file path
+  static Future<String> createCsvFile(List<PuttingMetrics> metrics) async {
+    final csvStr = metricsToCsvStr(metrics);
+
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = "${directory}/putting_metrics.csv";
+    
+    final File file = await File(filePath).create(recursive:true);
+    await file.writeAsString(csvStr);
+
+    return filePath;
+  }
+
+  // Encode data into CSV string
+  static String metricsToCsvStr(List<PuttingMetrics> metrics) {
     final buffer = StringBuffer();
     buffer.writeln(
       "putterToHoleDist,holeCenterOffset,ballToHoleDistX,ballToHoleDistY,"
@@ -49,9 +72,6 @@ class PuttingMetrics {
 
     return buffer.toString();
   }
-
-  // Send data over email
-
 
   // Decode Bluetooth data
   static PuttingMetrics fromBytes(List<int> bytes) {

@@ -19,7 +19,7 @@ const bool kUseMockDevice = false;
 /***************************DEBUGGING/TESTING***************************/
 
 void test() {
-  final original = PuttingMetrics(
+  final testData1 = PuttingMetrics(
     putterToHoleDist: 8.5,
     holeCenterOffset: 2.1,
     ballToHoleDistX: 6.3,
@@ -29,6 +29,29 @@ void test() {
     followThroughDeg: 85.0,
     successfulShot: false,
   );
+  final testData2 = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
+    swingForce: 1.2,
+    putterAngle: 1.1,
+    followThroughDeg: 85.0,
+    successfulShot: false,
+  );
+  final testData3 = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
+    swingForce: 1.2,
+    putterAngle: 1.1,
+    followThroughDeg: 85.0,
+    successfulShot: false,
+  );
+
+  final List<PuttingMetrics> testDataTransmission = [testData1, testData2, testData3];
+  PuttingMetrics.exportMetrics(testDataTransmission, "Test data", "rschneeberger@ufl.edu");
 }
 
 /***************************DEBUGGING/TESTING***************************/
@@ -153,10 +176,9 @@ class MyHomePageState extends State<MyHomePage> {
   // TRANSMITTING DATA
   // ---------------------------
   Future<void> _exportTrainingData() async {
-    String csvStr = PuttingMetrics.metricsToCsv(_metricsStorage);
-
-    // Download csv file
-    // Email csv
+    // Send data
+    //PuttingMetrics.exportMetrics(_metricsStorage, "Test Data", "rschneeberger@ufl.edu");
+    test();
   }
 
   // ---------------------------
