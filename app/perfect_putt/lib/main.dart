@@ -8,7 +8,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'ble/ble_communication.dart';
-import 'ai/ai_manager.dart';
+import 'putting_metrics/putting_metrics.dart';
 
 /// Toggle this for dev:
 /// true  = use fake/mock device (no real BLE needed)
@@ -21,11 +21,13 @@ const bool kUseMockDevice = false;
 void test() {
   final original = PuttingMetrics(
     putterToHoleDist: 8.5,
-    ballToHoleDist: 6.3,
     holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
     swingForce: 1.2,
-    swingAngle: 1.1,
-    followThroughDeg: 85.0
+    putterAngle: 1.1,
+    followThroughDeg: 85.0,
+    successfulShot: false,
   );
 }
 
@@ -78,11 +80,13 @@ class MyHomePageState extends State<MyHomePage> {
 
   // Current input data state
   PuttingMetrics _currMetrics = PuttingMetrics(putterToHoleDist: 0,
-                                              ballToHoleDist: 0,
                                               holeCenterOffset: 0,
+                                              ballToHoleDistX: 0,
+                                              ballToHoleDistY: 0,
                                               swingForce: 0,
-                                              swingAngle: 0,
-                                              followThroughDeg: 0);
+                                              putterAngle: 0,
+                                              followThroughDeg: 0,
+                                              successfulShot: false);
 
   // Storage for all data
   final List<PuttingMetrics> _metricsStorage = [];
@@ -144,6 +148,15 @@ class MyHomePageState extends State<MyHomePage> {
         // ignore disconnect errors
       }
     }
+  }
+  // ---------------------------
+  // TRANSMITTING DATA
+  // ---------------------------
+  Future<void> _exportTrainingData() async {
+    String csvStr = PuttingMetrics.metricsToCsv(_metricsStorage);
+
+    // Download csv file
+    // Email csv
   }
 
   // ---------------------------
@@ -691,9 +704,9 @@ class MyHomePageState extends State<MyHomePage> {
             
             const SizedBox(height: 12),
             
-            // -------------------------------
-            // --- NEW IMU CARD BELOW CAM ---
-            // -------------------------------
+            // ---------------------------------
+            // --- Description of Swing Data ---
+            // ---------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Card(
@@ -726,13 +739,19 @@ class MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Distance between ball and hole after swing: ${_currMetrics.ballToHoleDist}",
+                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset}",
+                        "Horizontal distance between ball and hole after swing: ${_currMetrics.ballToHoleDistX}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Vertical distance between ball and hole after swing: ${_currMetrics.ballToHoleDistY}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
@@ -744,13 +763,19 @@ class MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Angle of swing: ${_currMetrics.swingAngle}",
+                        "Angle of putter before swing: ${_currMetrics.putterAngle}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         "Degree of follow through: ${_currMetrics.followThroughDeg}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Was the shot successful? ${_currMetrics.successfulShot ? "Yes!" : "No."}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
@@ -762,7 +787,7 @@ class MyHomePageState extends State<MyHomePage> {
 
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: _startScan,
+              onPressed: _exportTrainingData,
               child: const Text("Export Training Data"),
             ),
 
