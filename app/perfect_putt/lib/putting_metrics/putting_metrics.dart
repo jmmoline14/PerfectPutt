@@ -29,10 +29,28 @@ class PuttingMetrics {
   });
 
   // Export data for training
-  static void exportMetrics(List<PuttingMetrics> metrics, String subject, String email) {
-    Future<String> filePath = PuttingMetrics.createCsvFile(metrics);
+  static Future<bool> exportMetrics(List<PuttingMetrics> metrics, String subject, String emailAddr) async {
+    String filePath = await PuttingMetrics.createCsvFile(metrics);
 
-    
+    // Create email
+    final Email email = Email(
+      body: "",
+      subject: subject,
+      recipients: [emailAddr],
+      attachmentPaths: [filePath],
+    );
+
+    // Send email
+    bool sentSuccessfully = true;
+    try {
+      await FlutterEmailSender.send(email);
+      print("Successful email");
+    } catch (error) {
+      sentSuccessfully = false;
+      print("failed to email: $error");
+    }
+
+    return sentSuccessfully;
   }
 
   // Create CSV file
@@ -41,7 +59,7 @@ class PuttingMetrics {
     final csvStr = metricsToCsvStr(metrics);
 
     final directory = await getApplicationDocumentsDirectory();
-    final filePath = "${directory}/putting_metrics.csv";
+    final filePath = "${directory.path}/putting_metrics.csv";
     
     final File file = await File(filePath).create(recursive:true);
     await file.writeAsString(csvStr);
@@ -53,7 +71,7 @@ class PuttingMetrics {
   static String metricsToCsvStr(List<PuttingMetrics> metrics) {
     final buffer = StringBuffer();
     buffer.writeln(
-      "putterToHoleDist,holeCenterOffset,ballToHoleDistX,ballToHoleDistY,"
+      "putterToHoleDist,ballToHoleDistX,ballToHoleDistY,holeCenterOffset,"
       "swingForce,putterAngle,followThroughDeg,successfulShot"
     );
 
@@ -83,10 +101,7 @@ class PuttingMetrics {
     final ballToHoleX = data.getFloat32(9, Endian.little);
     final ballToHoleY = data.getFloat32(13, Endian.little);
 
-    bool successful = false;
-    if (ballToHoleX == 0 && ballToHoleY == 0) {
-      successful = true;
-    }
+    bool successful = ballToHoleX.abs() < 1e-6 && ballToHoleY.abs() < 1e-6;
 
     return PuttingMetrics(
       putterToHoleDist: data.getFloat32(1, Endian.little),
