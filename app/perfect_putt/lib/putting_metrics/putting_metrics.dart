@@ -2,9 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
 
-import 'package:flutter_email_sender/flutter_email_sender.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:csv/csv.dart';
+import 'package:share_plus/share_plus.dart';
 
 class PuttingMetrics {
   final double putterToHoleDist;
@@ -29,28 +28,14 @@ class PuttingMetrics {
   });
 
   // Export data for training
-  static Future<bool> exportMetrics(List<PuttingMetrics> metrics, String subject, String emailAddr) async {
+  static Future<void> exportMetrics(List<PuttingMetrics> metrics, String subject) async {
     String filePath = await PuttingMetrics.createCsvFile(metrics);
 
-    // Create email
-    final Email email = Email(
-      body: "",
+    // Share file
+    await Share.shareXFiles(
+      [XFile(filePath)],
       subject: subject,
-      recipients: [emailAddr],
-      attachmentPaths: [filePath],
     );
-
-    // Send email
-    bool sentSuccessfully = true;
-    try {
-      await FlutterEmailSender.send(email);
-      print("Successful email");
-    } catch (error) {
-      sentSuccessfully = false;
-      print("failed to email: $error");
-    }
-
-    return sentSuccessfully;
   }
 
   // Create CSV file

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,7 +35,7 @@ void test() {
     ballToHoleDistY: 1.1,
     swingForce: 1.2,
     putterAngle: 1.1,
-    followThroughDeg: 85.0,
+    followThroughDeg: 84.0,
     successfulShot: false,
   );
   final testData3 = PuttingMetrics(
@@ -46,12 +45,12 @@ void test() {
     ballToHoleDistY: 1.1,
     swingForce: 1.2,
     putterAngle: 1.1,
-    followThroughDeg: 85.0,
-    successfulShot: false,
+    followThroughDeg: 83.0,
+    successfulShot: true,
   );
 
   final List<PuttingMetrics> testDataTransmission = [testData1, testData2, testData3];
-  PuttingMetrics.exportMetrics(testDataTransmission, "Test data", "rschneeberger@ufl.edu");
+  PuttingMetrics.exportMetrics(testDataTransmission, "Test data");
 }
 
 /***************************DEBUGGING/TESTING***************************/
@@ -177,8 +176,7 @@ class MyHomePageState extends State<MyHomePage> {
   // ---------------------------
   Future<void> _exportTrainingData() async {
     // Send data
-    //PuttingMetrics.exportMetrics(_metricsStorage, "Test Data", "rschneeberger@ufl.edu");
-    test();
+    PuttingMetrics.exportMetrics(_metricsStorage, "Test Data");
   }
 
   // ---------------------------
