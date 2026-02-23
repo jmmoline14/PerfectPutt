@@ -48,6 +48,26 @@ bool decodeIMUData(List<int> value,
   return true;
 }
 
+/// Model for ML analysis results - provides putting guidance
+class PuttAnalysisResult {
+  final double powerPercentage; // How hard to hit (0-100%)
+  final double angleFromHole;   // Angle relative to hole in degrees (-180 to 180)
+  final double distanceToHole;  // Estimated distance in feet/meters
+  final double greenSlope;      // Slope percentage
+  final String breakDirection;  // "left", "right", "straight"
+  final List<String> tips;      // Additional tips
+  final Uint8List? analyzedFrame;
+  
+  PuttAnalysisResult({
+    required this.powerPercentage,
+    required this.angleFromHole,
+    required this.distanceToHole,
+    required this.greenSlope,
+    required this.breakDirection,
+    required this.tips,
+    this.analyzedFrame,
+  });
+}
 
 void main() {
   runApp(const MyApp());
@@ -122,13 +142,34 @@ class MyHomePageState extends State<MyHomePage> {
     super.dispose();
   }
 
-  //Get Frame
-  Future<void> _requestFrame() async {
-    if(_isMock) return;
-    final c = _cameraChar;
-    if(c == null) return;
-    if(!(c.properties.write || c.properties.writeWithoutResponse)) return;
-    await c.write([0x01], withoutResponse: c.properties.writeWithoutResponse && !c.properties.write,);
+  // Navigate to capture instruction screen
+  void _startGreenScan() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CaptureInstructionScreen(
+          onCapture: _captureFrameAndAnalyze,
+          isMock: _isMock,
+        ),
+      ),
+    );
+  }
+
+  // Capture frame and start analysis
+  Future<void> _captureFrameAndAnalyze() async {
+    // Request frame if not in mock mode
+    if(!_isMock) {
+      final c = _cameraChar;
+      if(c == null) return;
+      if(!(c.properties.write || c.properties.writeWithoutResponse)) return;
+      await c.write([0x01], withoutResponse: c.properties.writeWithoutResponse && !c.properties.write,);
+      
+      // Wait a moment for the frame to arrive
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    // Return the captured data
+    return;
   }
 
   // ---------------------------
@@ -617,7 +658,7 @@ class MyHomePageState extends State<MyHomePage> {
   Widget _buildCameraView() {
     if (_latestFrame != null) {
       // Attempt to show bytes as an image. If the bytes are not a valid image
-      // this will throw – in that case you’ll need to decode differently.
+      // this will throw – in that case you'll need to decode differently.
       return Image.memory(
         _latestFrame!,
         fit: BoxFit.cover,
@@ -709,7 +750,7 @@ class MyHomePageState extends State<MyHomePage> {
             const SizedBox(height: 12),
             
             // -------------------------------
-            // --- NEW IMU CARD BELOW CAM ---
+            // --- IMU CARD BELOW CAM ---
             // -------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -722,9 +763,18 @@ class MyHomePageState extends State<MyHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ElevatedButton(
-                        onPressed: _requestFrame,
-                        child: const Text("Scan Green"),
+                      Center(
+                        child: ElevatedButton.icon(
+                          onPressed: _startGreenScan,
+                          icon: const Icon(Icons.golf_course),
+                          label: const Text("Scan Green"),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -793,4 +843,803 @@ class MyHomePageState extends State<MyHomePage> {
           ],
         ),
       );
+}
+
+// Capture Instructions Screen - Tells user to hold putter still
+
+class CaptureInstructionScreen extends StatefulWidget {
+  final Future<void> Function() onCapture;
+  final bool isMock;
+
+  const CaptureInstructionScreen({
+    Key? key,
+    required this.onCapture,
+    required this.isMock,
+  }) : super(key: key);
+
+  @override
+  State<CaptureInstructionScreen> createState() => _CaptureInstructionScreenState();
+}
+
+class _CaptureInstructionScreenState extends State<CaptureInstructionScreen> {
+  bool _isCapturing = false;
+
+  Future<void> _handleCapture() async {
+    setState(() {
+      _isCapturing = true;
+    });
+
+    //call the capture function
+    await widget.onCapture();
+
+    if (!mounted) return;
+
+    //navigate to loading screen
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LoadingScreen(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.lightGreen,
+      appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
+        title: const Text('Position Camera'),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.camera_alt,
+                  size: 80,
+                  color: Colors.lightGreen,
+                ),
+              ),
+              
+              const SizedBox(height: 48),
+              
+              // Instructions
+              const Text(
+                'Hold Putter Still',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              
+              const SizedBox(height: 24),
+              
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      _InstructionItem(
+                        icon: Icons.straighten,
+                        text: 'Hold the putter upright and steady',
+                      ),
+                      const SizedBox(height: 16),
+                      _InstructionItem(
+                        icon: Icons.visibility,
+                        text: 'Point camera at the green and hole',
+                      ),
+                      const SizedBox(height: 16),
+                      _InstructionItem(
+                        icon: Icons.center_focus_strong,
+                        text: 'Center the hole in the camera view',
+                      ),
+                      const SizedBox(height: 16),
+                      _InstructionItem(
+                        icon: Icons.pan_tool,
+                        text: 'Keep the device completely still',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 48),
+              
+              // Capture button
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: _isCapturing ? null : _handleCapture,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.lightGreen,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: _isCapturing
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.lightGreen),
+                          ),
+                        )
+                      : const Text(
+                          'Capture Green',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InstructionItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InstructionItem({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.lightGreen, size: 28),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Loading screen - Shows while ML model processes the data
+
+
+class LoadingScreen extends StatefulWidget {
+  const LoadingScreen({Key? key}) : super(key: key);
+
+  @override
+  State<LoadingScreen> createState() => _LoadingScreenState();
+}
+
+class _LoadingScreenState extends State<LoadingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _runMLAnalysis();
+  }
+
+  Future<void> _runMLAnalysis() async {
+    //  Replace this with ML model
+
+    
+    // simulate
+    await Future.delayed(const Duration(seconds: 3));
+    
+    // fake results
+    final mockResults = _generateMockResults();
+    
+    if (!mounted) return;
+    
+    // navigate to results screen
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ResultsScreen(result: mockResults),
+      ),
+    );
+  }
+  
+  PuttAnalysisResult _generateMockResults() {
+    // fake data for demo
+    return PuttAnalysisResult(
+      powerPercentage: 65.0,  
+      angleFromHole: -12.5,    
+      distanceToHole: 8.5,    
+      greenSlope: 2.3,       
+      breakDirection: "left",  
+      tips: [
+        "Use a smooth, controlled stroke at 65% power",
+      ],
+      analyzedFrame: null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.lightGreen,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              strokeWidth: 6,
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Analyzing the green...',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 48.0),
+              child: Text(
+                'Our AI model is calculating the optimal putt',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+            const SizedBox(height: 48),
+            _buildLoadingSteps(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildLoadingSteps() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32.0),
+      child: Column(
+        children: [
+          _LoadingStep(
+            icon: Icons.landscape,
+            text: "Mapping green topography",
+            delay: 0,
+          ),
+          const SizedBox(height: 12),
+          _LoadingStep(
+            icon: Icons.straighten,
+            text: "Calculating slope & break",
+            delay: 0,
+          ),
+          const SizedBox(height: 12),
+          _LoadingStep(
+            icon: Icons.sports_golf,
+            text: "Computing optimal trajectory",
+            delay: 0,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadingStep extends StatefulWidget {
+  final IconData icon;
+  final String text;
+  final int delay;
+
+  const _LoadingStep({
+    required this.icon,
+    required this.text,
+    required this.delay,
+  });
+
+  @override
+  State<_LoadingStep> createState() => _LoadingStepState();
+}
+
+class _LoadingStepState extends State<_LoadingStep> 
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    
+    Future.delayed(Duration(milliseconds: widget.delay * 300), () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _animation,
+      child: Row(
+        children: [
+          Icon(widget.icon, color: Colors.white70, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            widget.text,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Results screen
+
+class ResultsScreen extends StatelessWidget {
+  final PuttAnalysisResult result;
+
+  const ResultsScreen({Key? key, required this.result}) : super(key: key);
+
+  String _getAngleDirection() {
+    if (result.angleFromHole > 0) {
+      return "right of hole";
+    } else if (result.angleFromHole < 0) {
+      return "left of hole";
+    } else {
+      return "directly at hole";
+    }
+  }
+
+  Color _getPowerColor() {
+    if (result.powerPercentage < 33) return Colors.green;
+    if (result.powerPercentage < 66) return Colors.orange;
+    return Colors.red;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.lightGreen,
+      appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
+        title: const Text('Perfect Putt Results'),
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              // Main instruction card
+              Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.blue.shade400,
+                        Colors.blue.shade600,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.golf_course,
+                        size: 48,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Putt Instructions',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${result.distanceToHole.toStringAsFixed(1)} feet to hole',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // power gauge
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.speed, color: _getPowerColor(), size: 28),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Power',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: LinearProgressIndicator(
+                                value: result.powerPercentage / 100,
+                                minHeight: 30,
+                                backgroundColor: Colors.grey.shade300,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  _getPowerColor(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            '${result.powerPercentage.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: _getPowerColor(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        result.powerPercentage < 33
+                            ? 'Gentle tap'
+                            : result.powerPercentage < 66
+                                ? 'Moderate stroke'
+                                : 'Firm hit',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Angle/Direction card
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.explore, color: Colors.purple, size: 28),
+                          SizedBox(width: 12),
+                          Text(
+                            'Aim Direction',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (result.angleFromHole < 0)
+                            const Icon(
+                              Icons.arrow_back,
+                              size: 40,
+                              color: Colors.purple,
+                            ),
+                          const SizedBox(width: 8),
+                          Column(
+                            children: [
+                              Text(
+                                '${result.angleFromHole.abs().toStringAsFixed(1)}°',
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.purple,
+                                ),
+                              ),
+                              Text(
+                                _getAngleDirection(),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                          if (result.angleFromHole > 0)
+                            const Icon(
+                              Icons.arrow_forward,
+                              size: 40,
+                              color: Colors.purple,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Green conditions
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.landscape, color: Colors.teal, size: 28),
+                          SizedBox(width: 12),
+                          Text(
+                            'Green Conditions',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _ConditionRow(
+                        label: 'Slope',
+                        value: '${result.greenSlope.toStringAsFixed(1)}%',
+                      ),
+                      const SizedBox(height: 8),
+                      _ConditionRow(
+                        label: 'Break',
+                        value: result.breakDirection.toUpperCase(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Tips section
+              if (result.tips.isNotEmpty)
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.tips_and_updates, color: Colors.amber, size: 28),
+                            SizedBox(width: 12),
+                            Text(
+                              'Pro Tips',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        ...result.tips.map((tip) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  tip,
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
+                      ],
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        // Navigate back to home and prepare for next scan
+                        Navigator.of(context).popUntil((route) => route.isFirst);
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Scan Again'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.lightGreen,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        // TODO: Implement scoring/game completion
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Scored! 🎉'),
+                            content: const Text('Great putt! Ready for the next hole?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).popUntil((route) => route.isFirst);
+                                },
+                                child: const Text('Next Hole'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.flag),
+                      label: const Text('I Scored'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConditionRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ConditionRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
 }
