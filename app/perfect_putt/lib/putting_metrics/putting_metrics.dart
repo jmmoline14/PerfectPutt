@@ -78,24 +78,27 @@ class PuttingMetrics {
 
   // Decode Bluetooth data
   static PuttingMetrics fromBytes(List<int> bytes) {
-    if (bytes.length < 29) {
+    if (bytes.length < 28) {
+      print("Error, incorrect size packet");
       throw ArgumentError("BLE Packet not large enough");
+    } else {
+      print("Successful packet transmission!");
     }
 
     final data = ByteData.sublistView(Uint8List.fromList(bytes));
-    final ballToHoleX = data.getFloat32(9, Endian.little);
-    final ballToHoleY = data.getFloat32(13, Endian.little);
+    final ballToHoleX = data.getFloat32(8, Endian.little);
+    final ballToHoleY = data.getFloat32(12, Endian.little);
 
     bool successful = ballToHoleX.abs() < 1e-6 && ballToHoleY.abs() < 1e-6;
 
     return PuttingMetrics(
-      putterToHoleDist: data.getFloat32(1, Endian.little),
-      holeCenterOffset: data.getFloat32(5, Endian.little),
+      putterToHoleDist: data.getFloat32(0, Endian.little),
+      holeCenterOffset: data.getFloat32(4, Endian.little),
       ballToHoleDistX: ballToHoleX,
       ballToHoleDistY: ballToHoleY,
-      swingForce: data.getFloat32(17, Endian.little),
-      putterAngle: data.getFloat32(21, Endian.little),
-      followThroughDeg: data.getFloat32(25, Endian.little),
+      swingForce: data.getFloat32(16, Endian.little),
+      putterAngle: data.getFloat32(20, Endian.little),
+      followThroughDeg: data.getFloat32(24, Endian.little),
       successfulShot: successful,
     );
   }

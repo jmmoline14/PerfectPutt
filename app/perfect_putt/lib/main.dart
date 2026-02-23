@@ -86,20 +86,13 @@ class MyHomePage extends StatefulWidget {
 class MyHomePageState extends State<MyHomePage> {
   final TextEditingController _writeController = TextEditingController();
 
+  late BleCommunication _ble;
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
-
+  
   // Camera feed state
   Uint8List? _latestFrame;
-  StreamSubscription<List<int>>? _cameraSub;
-  //Camera Request
-  BluetoothCharacteristic? _cameraChar;
-  // IMU Data state
-  List<String> _accelData = List.filled(3, "N/A");
-  List<String> _gyroData  = List.filled(3, "N/A");
-  List<String> _magData   = List.filled(3, "N/A");
-  StreamSubscription<List<int>>? _imuSub;
-
+  
   // Current input data state
   PuttingMetrics _currMetrics = PuttingMetrics(putterToHoleDist: 0,
                                               holeCenterOffset: 0,
@@ -113,9 +106,6 @@ class MyHomePageState extends State<MyHomePage> {
   // Storage for all data
   final List<PuttingMetrics> _metricsStorage = [];
 
-  // BLE scanning
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
-
   // Mock mode
   bool _isMock = kUseMockDevice;
   Timer? _mockCameraTimer;
@@ -123,54 +113,20 @@ class MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    if (kUseMockDevice) {
-      _startMockDevice();
-    } else {
-      _initPermissionsAndScan();
-    }
+    _ble = BleCommunication();
   }
 
   @override
   void dispose() {
-    _cameraSub?.cancel();
-    _scanSubscription?.cancel();
-    _mockCameraTimer?.cancel();
-    FlutterBluePlus.stopScan();
-    _disconnectDeviceSilently();
+    _ble.disconnect();
     _writeController.dispose();
     super.dispose();
-  }
-
-  //Get Frame
-  Future<void> _requestFrame() async {
-    if(_isMock) return;
-    final c = _cameraChar;
-    if(c == null) return;
-    if(!(c.properties.write || c.properties.writeWithoutResponse)) return;
-    await c.write([0x01], withoutResponse: c.properties.writeWithoutResponse && !c.properties.write,);
   }
 
   // ---------------------------
   // BASIC HELPERS
   // ---------------------------
 
-  void _addDeviceToList(final BluetoothDevice device) {
-    if (!widget.devicesList.contains(device)) {
-      setState(() {
-        widget.devicesList.add(device);
-      });
-    }
-  }
-
-  Future<void> _disconnectDeviceSilently() async {
-    if (_connectedDevice != null) {
-      try {
-        await _connectedDevice!.disconnect();
-      } catch (_) {
-        // ignore disconnect errors
-      }
-    }
-  }
   // ---------------------------
   // TRANSMITTING DATA
   // ---------------------------
@@ -182,191 +138,6 @@ class MyHomePageState extends State<MyHomePage> {
   // ---------------------------
   // PERMISSIONS + SCANNING
   // ---------------------------
-
-  Future<void> _initPermissionsAndScan() async {
-    if (_isMock) return; // mock mode: skip BLE
-
-    var status = await Permission.location.status;
-    if (status.isDenied) {
-      final newStatus = await Permission.location.request();
-      if (newStatus.isGranted || newStatus.isLimited) {
-        await _startScan();
-      }
-    } else if (status.isGranted || status.isLimited) {
-      await _startScan();
-    }
-
-    if (await Permission.location.status.isPermanentlyDenied) {
-      openAppSettings();
-    }
-  }
-
-  Future<void> _startScan() async {
-    if (_isMock) return;
-
-    _scanSubscription?.cancel();
-
-    _scanSubscription = FlutterBluePlus.onScanResults.listen(
-      (results) {
-        if (results.isNotEmpty) {
-          for (final ScanResult result in results) {
-            _addDeviceToList(result.device);
-          }
-        }
-      },
-      onError: (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      },
-    );
-
-    FlutterBluePlus.cancelWhenScanComplete(_scanSubscription!);
-
-    await FlutterBluePlus.adapterState
-        .where((val) => val == BluetoothAdapterState.on)
-        .first;
-
-    await FlutterBluePlus.startScan();
-
-    await FlutterBluePlus.isScanning.where((val) => val == false).first;
-
-    // Add already-connected devices
-    for (final device in FlutterBluePlus.connectedDevices) {
-      _addDeviceToList(device);
-    }
-  }
-
-  // ---------------------------------
-  // CONNECT / SERVICES / CAMERA / IMU
-  // ---------------------------------
-
-  Future<void> _connectToDevice(BluetoothDevice device) async {
-    if (_isMock) return;
-
-    FlutterBluePlus.stopScan();
-
-    try {
-      await device.connect();
-    } on PlatformException catch (e) {
-      if (e.code != 'already_connected') {
-        rethrow;
-      }
-    } catch (_) {
-      // ignore other errors for now
-    }
-
-    final services = await device.discoverServices();
-
-    setState(() {
-      _connectedDevice = device;
-      _services = services;
-    });
-
-    await _attachCameraStreamFromServices();
-    await _attachIMUStreamFromServices();
-  }
-
-  Future<void> _attachIMUStreamFromServices() async {
-    _imuSub?.cancel();
-
-    BluetoothCharacteristic? imuChar;
-
-    for (final service in _services) {
-      if (service.uuid == kimuServiceUuid) {
-        for (final characteristic in service.characteristics) {
-          if (characteristic.uuid == kimuCharUuid) {
-            imuChar = characteristic;
-            break;
-          }
-        }
-      }
-      if (imuChar != null) {
-        break;
-      }
-    }
-
-    if (imuChar == null) {
-      // No imu characteristic found; just keep the rest of the UI working.
-      return;
-    }
-
-    _imuSub = imuChar.lastValueStream.listen((value) {
-      if (!mounted) return;
-
-      List<double> accel = List.filled(3, 0.0);;
-      List<double> gyro = List.filled(3, 0.0);;
-      List<double> mag = List.filled(3, 0.0);;
-
-
-      if (!decodeIMUData(value, accel, gyro, mag)) return;
-      
-      setState(() {
-        // Each notification contains one packet of IMU data
-        for (int i  = 0; i < 3; i++) {
-          _accelData[i] = accel[i].toStringAsFixed(2);
-          _gyroData[i]  = gyro[i].toStringAsFixed(2);
-          _magData[i]   = mag[i].toStringAsFixed(2);
-        }
-
-        _currMetrics = PuttingMetrics.fromBytes(value);
-        _metricsStorage.add(_currMetrics);
-      });
-    });
-
-    await imuChar.setNotifyValue(true);
-  }
-
-  Future<void> _attachCameraStreamFromServices() async {
-    _cameraSub?.cancel();
-
-    BluetoothCharacteristic? cameraChar;
-
-    for (final service in _services) {
-      if (service.uuid == kCameraServiceUuid) {
-        for (final characteristic in service.characteristics) {
-          if (characteristic.uuid == kCameraCharUuid) {
-            cameraChar = characteristic;
-            break;
-          }
-        }
-      }
-      if (cameraChar != null) break;
-    }
-
-    if (cameraChar == null) {
-      // No camera characteristic found; just keep the rest of the UI working.
-      return;
-    }
-
-    _cameraChar = cameraChar;
-
-    _cameraSub = cameraChar.lastValueStream.listen((value) {
-      if (!mounted) return;
-      setState(() {
-        // Assumes each notification is a complete encoded image (JPEG/PNG)
-        _latestFrame = Uint8List.fromList(value);
-      });
-    });
-
-    await cameraChar.setNotifyValue(true);
-  }
-
-  Future<void> _disconnect() async {
-    _cameraSub?.cancel();
-    _cameraSub = null;
-    _imuSub?.cancel();
-    _imuSub = null;
-
-    await _disconnectDeviceSilently();
-
-    setState(() {
-      _connectedDevice = null;
-      _services = [];
-      _latestFrame = null;
-    });
-  }
 
   // ---------------------------
   // MOCK / FAKE DEVICE
@@ -409,7 +180,7 @@ class MyHomePageState extends State<MyHomePage> {
     final List<Widget> containers = <Widget>[];
 
     for (BluetoothDevice device in widget.devicesList) {
-      if (!device.platformName.isEmpty) {
+      if (device.platformName == "PERFECTPUTT") {
         containers.add(
           SizedBox(
             height: 60,
@@ -440,7 +211,28 @@ class MyHomePageState extends State<MyHomePage> {
                     'Connect',
                     style: TextStyle(color: Colors.black),
                   ),
-                  onPressed: () => _connectToDevice(device),
+                  onPressed: () {
+                    _ble.connect(
+                      device,
+                      onServicesReady: (services) {
+                        setState(() {
+                          _connectedDevice = device;
+                          _services = services;
+                        });
+                      },
+                      onMetricsReceived: (metrics) {
+                        setState(() {
+                          _currMetrics = metrics;
+                          _metricsStorage.add(metrics);
+                        });
+                      },
+                      onFrameReceived: (frame) {
+                        setState(() {
+                          _latestFrame = frame;
+                        });
+                      },
+                    );
+                  },
                 ),
               ],
             ),
@@ -694,7 +486,14 @@ class MyHomePageState extends State<MyHomePage> {
             if (!_isMock && _connectedDevice != null)
               IconButton(
                 icon: const Icon(Icons.bluetooth_disabled),
-                onPressed: _disconnect,
+                onPressed: () async {
+                  await _ble.disconnect();
+                  setState(() {
+                    _connectedDevice = null;
+                    _services = [];
+                    _latestFrame = null;
+                  });
+                },
               ),
           ],
         ),
@@ -739,8 +538,20 @@ class MyHomePageState extends State<MyHomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ElevatedButton(
-                        onPressed: _requestFrame,
-                        child: const Text("Start Continuous Data Collection"),
+                        onPressed: () async {
+                          final puttingChar = _ble.getPuttingChar();
+
+                          if (puttingChar == null) return;
+
+                          final sub = puttingChar.lastValueStream.listen((value) {
+                            setState(() {
+                              widget.readValues[puttingChar.uuid] = value;
+                            });
+                          });
+                          await puttingChar.read();
+                          await sub.cancel();
+                        },
+                        child: const Text("Collect swing data"),
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -817,7 +628,13 @@ class MyHomePageState extends State<MyHomePage> {
               children: [
                 if (!_isMock)
                   ElevatedButton(
-                    onPressed: _startScan,
+                    onPressed: () {
+                      _ble.startScan((devices) {
+                        setState(() {
+                          widget.devicesList..clear()..addAll(devices);
+                        });
+                      });
+                    },
                     child: const Text('Scan for devices'),
                   )
                 else
@@ -828,7 +645,14 @@ class MyHomePageState extends State<MyHomePage> {
                 const SizedBox(width: 16),
                 if (!_isMock && _connectedDevice != null)
                   TextButton(
-                    onPressed: _disconnect,
+                    onPressed: () async {
+                      await _ble.disconnect();
+                      setState(() {
+                        _connectedDevice = null;
+                        _services = [];
+                        _latestFrame = null;
+                      });
+                    },
                     child: const Text('Disconnect'),
                   ),
               ],
