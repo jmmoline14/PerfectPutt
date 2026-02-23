@@ -1,10 +1,12 @@
 BLE Packet Format
-29 bytes [0..28]
+2 packets
+Char 0080: 8 bytes [0..7]
+Char 0081: 20 bytes [0..19]
 Little endian format
 
 
 0080 [0..7]
-[1..4]
+[0..3]
 Distance from putter to hole before shot
  -vertical distance only
  -calculated from hole size and/or pixel distance away
@@ -12,15 +14,15 @@ Distance from putter to hole before shot
  -units don't matter as long as everything is the same units
  -should be a positive float
 
-[5..8]
+[4..7]
 Offset of hole from center line before shot
  -horizontal distance from center of camera frame to center of hole
  -calculated from same camera frame as above distance
  -should be zero if on center line, positive if to the right, negative if to the left
  -should be a signed float
 
-0081 [8..27]
-[9..12]
+0081 [0..19]
+[0..3]
 Horizontal distance between ball and hole after shot
  -calculated from center of ball to center of hole
   -calculated from single camera frame after both putter and ball stop moving
@@ -29,20 +31,20 @@ Horizontal distance between ball and hole after shot
  -should be zero if ball is in hole
  -should be a signed float
 
-[13..16]
+[4..7]
 Vertical distance between ball and hole after shot
  -calculated similar to above
  -should be positive if ball is above hole, negative if below
  -horizontal and vertical distance should both be zero if ball is in hole
  -should be a signed float
 
-[17..20]
+[8..11]
 Force of swing
  -calculated as max force input from force sensor during swing?
  -should be zero if it is a practice swing (if below a certain threshold zero it)
  -should be a positive float
 
-[21..24]
+[12..15]
 Angle of putter
  -angle putter makes with the ground before swing
  -calculated as a degrees between vertical and putter angle
@@ -51,7 +53,7 @@ Angle of putter
  -may be unnecessary to include as data
  -should be a positive float
 
-[25..28]
+[16..19]
 Degree of follow-through
  -angle putter makes at the peak of its swing after hitting the ball
  -should be calculated with IMU accelerometer/gyroscope data
