@@ -1,53 +1,59 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'ble/ble_communication.dart';
+import 'putting_metrics/putting_metrics.dart';
+
 /// Toggle this for dev:
 /// true  = use fake/mock device (no real BLE needed)
 /// false = use real Arduino Portenta H7 over BLE
-const bool kUseMockDevice = true;
+const bool kUseMockDevice = false;
 
-/// UUIDs for the Portenta H7 camera stream.
-/// TODO: replace these with your real service/characteristic UUIDs.
-Guid kCameraServiceUuid = Guid("00000000-0000-0000-0000-000000000001");
-Guid kCameraCharUuid = Guid("00000000-0000-0000-0000-000000000002");
-Guid kimuServiceUuid = Guid("0075");
-Guid kimuCharUuid = Guid("0080");
 
-// Decode IMU Data into arrays of doubles
-bool decodeIMUData(List<int> value, 
-                    List<double> accelData, 
-                    List<double> gyroData, 
-                    List<double> magData) {
-  // Check that packet is correct size
-  int idealPacketSize = 25; // Mag data not currently used
-  if (value.length < idealPacketSize) return false;
+/***************************DEBUGGING/TESTING***************************/
 
-  // Convert to ByteData object
-  final byteData = ByteData.sublistView(
-    Uint8List.fromList(value),
+void test() {
+  final testData1 = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
+    swingForce: 1.2,
+    putterAngle: 1.1,
+    followThroughDeg: 85.0,
+    successfulShot: false,
+  );
+  final testData2 = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
+    swingForce: 1.2,
+    putterAngle: 1.1,
+    followThroughDeg: 84.0,
+    successfulShot: false,
+  );
+  final testData3 = PuttingMetrics(
+    putterToHoleDist: 8.5,
+    holeCenterOffset: 2.1,
+    ballToHoleDistX: 6.3,
+    ballToHoleDistY: 1.1,
+    swingForce: 1.2,
+    putterAngle: 1.1,
+    followThroughDeg: 83.0,
+    successfulShot: true,
   );
 
-  // Accel data
-  accelData[0] = byteData.getFloat32(1, Endian.little);
-  accelData[1] = byteData.getFloat32(5, Endian.little);
-  accelData[2] = byteData.getFloat32(9, Endian.little);
-
-  // Gyro data
-  gyroData[0] = byteData.getFloat32(13, Endian.little);
-  gyroData[1] = byteData.getFloat32(17, Endian.little);
-  gyroData[2] = byteData.getFloat32(21, Endian.little);
-
-  // Don't update mag data
-
-  return true;
+  final List<PuttingMetrics> testDataTransmission = [testData1, testData2, testData3];
+  PuttingMetrics.exportMetrics(testDataTransmission, "Test data");
 }
 
+/***************************DEBUGGING/TESTING***************************/
 
 void main() {
   runApp(const MyApp());
@@ -60,7 +66,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'Perfect Putt',
         theme: ThemeData(
-          primarySwatch: Colors.lightGreen,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.white)
         ),
         home: MyHomePage(title: 'Perfect Putt'),
       );
@@ -80,22 +86,26 @@ class MyHomePage extends StatefulWidget {
 class MyHomePageState extends State<MyHomePage> {
   final TextEditingController _writeController = TextEditingController();
 
+  late BleCommunication _ble;
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
-
+  
   // Camera feed state
   Uint8List? _latestFrame;
-  StreamSubscription<List<int>>? _cameraSub;
-  //Camera Request
-  BluetoothCharacteristic? _cameraChar;
-  // IMU Data state
-  List<String> _accelData = List.filled(3, "N/A");
-  List<String> _gyroData  = List.filled(3, "N/A");
-  List<String> _magData   = List.filled(3, "N/A");
-  StreamSubscription<List<int>>? _imuSub;
+  
+  // Current input data state
+  PuttingMetrics _currMetrics = PuttingMetrics(putterToHoleDist: 0,
+                                              holeCenterOffset: 0,
+                                              ballToHoleDistX: 0,
+                                              ballToHoleDistY: 0,
+                                              swingForce: 0,
+                                              putterAngle: 0,
+                                              followThroughDeg: 0,
+                                              successfulShot: false);
+  List<int> _tempMetrics = List.filled(28, 0);
 
-  // BLE scanning
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  // Storage for all data
+  final List<PuttingMetrics> _metricsStorage = [];
 
   // Mock mode
   bool _isMock = kUseMockDevice;
@@ -104,240 +114,31 @@ class MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    if (kUseMockDevice) {
-      _startMockDevice();
-    } else {
-      _initPermissionsAndScan();
-    }
+    _ble = BleCommunication();
   }
 
   @override
   void dispose() {
-    _cameraSub?.cancel();
-    _scanSubscription?.cancel();
-    _mockCameraTimer?.cancel();
-    FlutterBluePlus.stopScan();
-    _disconnectDeviceSilently();
+    _ble.disconnect();
     _writeController.dispose();
     super.dispose();
-  }
-
-  //Get Frame
-  Future<void> _requestFrame() async {
-    if(_isMock) return;
-    final c = _cameraChar;
-    if(c == null) return;
-    if(!(c.properties.write || c.properties.writeWithoutResponse)) return;
-    await c.write([0x01], withoutResponse: c.properties.writeWithoutResponse && !c.properties.write,);
   }
 
   // ---------------------------
   // BASIC HELPERS
   // ---------------------------
 
-  void _addDeviceToList(final BluetoothDevice device) {
-    if (!widget.devicesList.contains(device)) {
-      setState(() {
-        widget.devicesList.add(device);
-      });
-    }
-  }
-
-  Future<void> _disconnectDeviceSilently() async {
-    if (_connectedDevice != null) {
-      try {
-        await _connectedDevice!.disconnect();
-      } catch (_) {
-        // ignore disconnect errors
-      }
-    }
+  // ---------------------------
+  // TRANSMITTING DATA
+  // ---------------------------
+  Future<void> _exportTrainingData() async {
+    // Send data
+    PuttingMetrics.exportMetrics(_metricsStorage, "Test Data");
   }
 
   // ---------------------------
   // PERMISSIONS + SCANNING
   // ---------------------------
-
-  Future<void> _initPermissionsAndScan() async {
-    if (_isMock) return; // mock mode: skip BLE
-
-    var status = await Permission.location.status;
-    if (status.isDenied) {
-      final newStatus = await Permission.location.request();
-      if (newStatus.isGranted || newStatus.isLimited) {
-        await _startScan();
-      }
-    } else if (status.isGranted || status.isLimited) {
-      await _startScan();
-    }
-
-    if (await Permission.location.status.isPermanentlyDenied) {
-      openAppSettings();
-    }
-  }
-
-  Future<void> _startScan() async {
-    if (_isMock) return;
-
-    _scanSubscription?.cancel();
-
-    _scanSubscription = FlutterBluePlus.onScanResults.listen(
-      (results) {
-        if (results.isNotEmpty) {
-          for (final ScanResult result in results) {
-            _addDeviceToList(result.device);
-          }
-        }
-      },
-      onError: (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      },
-    );
-
-    FlutterBluePlus.cancelWhenScanComplete(_scanSubscription!);
-
-    await FlutterBluePlus.adapterState
-        .where((val) => val == BluetoothAdapterState.on)
-        .first;
-
-    await FlutterBluePlus.startScan();
-
-    await FlutterBluePlus.isScanning.where((val) => val == false).first;
-
-    // Add already-connected devices
-    for (final device in FlutterBluePlus.connectedDevices) {
-      _addDeviceToList(device);
-    }
-  }
-
-  // ---------------------------------
-  // CONNECT / SERVICES / CAMERA / IMU
-  // ---------------------------------
-
-  Future<void> _connectToDevice(BluetoothDevice device) async {
-    if (_isMock) return;
-
-    FlutterBluePlus.stopScan();
-
-    try {
-      await device.connect();
-    } on PlatformException catch (e) {
-      if (e.code != 'already_connected') {
-        rethrow;
-      }
-    } catch (_) {
-      // ignore other errors for now
-    }
-
-    final services = await device.discoverServices();
-
-    setState(() {
-      _connectedDevice = device;
-      _services = services;
-    });
-
-    await _attachCameraStreamFromServices();
-    await _attachIMUStreamFromServices();
-  }
-
-  Future<void> _attachIMUStreamFromServices() async {
-    _imuSub?.cancel();
-
-    BluetoothCharacteristic? imuChar;
-
-    for (final service in _services) {
-      if (service.uuid == kimuServiceUuid) {
-        for (final characteristic in service.characteristics) {
-          if (characteristic.uuid == kimuCharUuid) {
-            imuChar = characteristic;
-            break;
-          }
-        }
-      }
-      if (imuChar != null) {
-        break;
-      }
-    }
-
-    if (imuChar == null) {
-      // No imu characteristic found; just keep the rest of the UI working.
-      return;
-    }
-
-    _imuSub = imuChar.lastValueStream.listen((value) {
-      if (!mounted) return;
-
-      List<double> accel = List.filled(3, 0.0);;
-      List<double> gyro = List.filled(3, 0.0);;
-      List<double> mag = List.filled(3, 0.0);;
-
-      if (!decodeIMUData(value, accel, gyro, mag)) return;
-      
-      setState(() {
-        // Each notification contains one packet of IMU data
-        for (int i  = 0; i < 3; i++) {
-          _accelData[i] = accel[i].toStringAsFixed(2);
-          _gyroData[i]  = gyro[i].toStringAsFixed(2);
-          _magData[i]   = mag[i].toStringAsFixed(2);
-        }
-
-      });
-    });
-
-    await imuChar.setNotifyValue(true);
-  }
-
-  Future<void> _attachCameraStreamFromServices() async {
-    _cameraSub?.cancel();
-
-    BluetoothCharacteristic? cameraChar;
-
-    for (final service in _services) {
-      if (service.uuid == kCameraServiceUuid) {
-        for (final characteristic in service.characteristics) {
-          if (characteristic.uuid == kCameraCharUuid) {
-            cameraChar = characteristic;
-            break;
-          }
-        }
-      }
-      if (cameraChar != null) break;
-    }
-
-    if (cameraChar == null) {
-      // No camera characteristic found; just keep the rest of the UI working.
-      return;
-    }
-
-    _cameraChar = cameraChar;
-
-    _cameraSub = cameraChar.lastValueStream.listen((value) {
-      if (!mounted) return;
-      setState(() {
-        // Assumes each notification is a complete encoded image (JPEG/PNG)
-        _latestFrame = Uint8List.fromList(value);
-      });
-    });
-
-    await cameraChar.setNotifyValue(true);
-  }
-
-  Future<void> _disconnect() async {
-    _cameraSub?.cancel();
-    _cameraSub = null;
-    _imuSub?.cancel();
-    _imuSub = null;
-
-    await _disconnectDeviceSilently();
-
-    setState(() {
-      _connectedDevice = null;
-      _services = [];
-      _latestFrame = null;
-    });
-  }
 
   // ---------------------------
   // MOCK / FAKE DEVICE
@@ -380,7 +181,7 @@ class MyHomePageState extends State<MyHomePage> {
     final List<Widget> containers = <Widget>[];
 
     for (BluetoothDevice device in widget.devicesList) {
-      if (!device.platformName.isEmpty) {
+      if (device.platformName == "PERFECTPUTT") {
         containers.add(
           SizedBox(
             height: 60,
@@ -411,7 +212,42 @@ class MyHomePageState extends State<MyHomePage> {
                     'Connect',
                     style: TextStyle(color: Colors.black),
                   ),
-                  onPressed: () => _connectToDevice(device),
+                  onPressed: () {
+                    _ble.connect(
+                      device,
+                      onServicesReady: (services) {
+                        setState(() {
+                          _connectedDevice = device;
+                          _services = services;
+                        });
+                      },
+                      onPreSwingReceived: (metricsBytes) {
+                        setState(() {
+                          _currMetrics.updatePreSwingData(metricsBytes);
+                          if (_currMetrics.preSwingUpdated && _currMetrics.postSwingUpdated) {
+                            _metricsStorage.add(_currMetrics.copy());
+                            _currMetrics.preSwingUpdated = false;
+                            _currMetrics.postSwingUpdated = false;
+                          }
+                        });
+                      },
+                      onPostSwingReceived: (metricsBytes) {
+                        setState(() {
+                          _currMetrics.updatePostSwingData(metricsBytes);
+                          if (_currMetrics.preSwingUpdated && _currMetrics.postSwingUpdated) {
+                            _metricsStorage.add(_currMetrics.copy());
+                            _currMetrics.preSwingUpdated = false;
+                            _currMetrics.postSwingUpdated = false;
+                          }
+                        });
+                      },
+                      onFrameReceived: (frame) {
+                        setState(() {
+                          _latestFrame = frame;
+                        });
+                      },
+                    );
+                  },
                 ),
               ],
             ),
@@ -656,16 +492,23 @@ class MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.lightGreen,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: Colors.lightGreen,
+          backgroundColor: Colors.white,
           title: Text(widget.title),
           centerTitle: true,
           actions: [
             if (!_isMock && _connectedDevice != null)
               IconButton(
                 icon: const Icon(Icons.bluetooth_disabled),
-                onPressed: _disconnect,
+                onPressed: () async {
+                  await _ble.disconnect();
+                  setState(() {
+                    _connectedDevice = null;
+                    _services = [];
+                    _latestFrame = null;
+                  });
+                },
               ),
           ],
         ),
@@ -692,25 +535,12 @@ class MyHomePageState extends State<MyHomePage> {
               ),
             ),
             const SizedBox(height: 8),
-
-            // CAMERA FEED AREA
-            AspectRatio(
-              aspectRatio: 4 / 3,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _buildCameraView(),
-              ),
-            ),
             
             const SizedBox(height: 12),
             
-            // -------------------------------
-            // --- NEW IMU CARD BELOW CAM ---
-            // -------------------------------
+            // ---------------------------------
+            // --- Description of Swing Data ---
+            // ---------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Card(
@@ -723,8 +553,28 @@ class MyHomePageState extends State<MyHomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ElevatedButton(
-                        onPressed: _requestFrame,
-                        child: const Text("Scan Green"),
+                        onPressed: () async {
+                          final preSwingDataChar = _ble.getPreSwingDataChar();
+                          final postSwingDataChar = _ble.getPostSwingDataChar();
+
+                          if (preSwingDataChar == null || postSwingDataChar == null) return;
+
+                          final sub = preSwingDataChar.lastValueStream.listen((value) {
+                            setState(() {
+                              widget.readValues[preSwingDataChar.uuid] = value;
+                            });
+                          });
+                          final subTwo = postSwingDataChar.lastValueStream.listen((value) {
+                            setState(() {
+                              widget.readValues[postSwingDataChar.uuid] = value;
+                            });
+                          });
+                          await preSwingDataChar.read();
+                          await postSwingDataChar.read();
+                          await sub.cancel();
+                          await subTwo.cancel();
+                        },
+                        child: const Text("Collect swing data"),
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -737,19 +587,49 @@ class MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Accel: (x: ${_accelData[0]}, y: ${_accelData[1]}, z: ${_accelData[2]})",
+                        "Distance between putter and hole: ${_currMetrics.putterToHoleDist.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Gyro:  (x: ${_gyroData[0]}, y: ${_gyroData[1]}, z: ${_gyroData[2]})",
+                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Mag:   (x: ${_magData[0]}, y: ${_magData[1]}, z: ${_magData[2]})",
+                        "Horizontal distance between ball and hole after swing: ${_currMetrics.ballToHoleDistX.toStringAsFixed(2)}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Vertical distance between ball and hole after swing: ${_currMetrics.ballToHoleDistY.toStringAsFixed(2)}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Force of swing: ${_currMetrics.swingForce.toStringAsFixed(2)}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Angle of putter before swing: ${_currMetrics.putterAngle.toStringAsFixed(2)}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Degree of follow through: ${_currMetrics.followThroughDeg.toStringAsFixed(2)}",
+                        style: TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Was the shot successful? ${_currMetrics.successfulShot ? "Yes!" : "No."}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
@@ -760,6 +640,10 @@ class MyHomePageState extends State<MyHomePage> {
             ),
 
             const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _exportTrainingData,
+              child: const Text("Export Training Data"),
+            ),
 
             // CONTROL BUTTONS
             Row(
@@ -767,7 +651,13 @@ class MyHomePageState extends State<MyHomePage> {
               children: [
                 if (!_isMock)
                   ElevatedButton(
-                    onPressed: _startScan,
+                    onPressed: () {
+                      _ble.startScan((devices) {
+                        setState(() {
+                          widget.devicesList..clear()..addAll(devices);
+                        });
+                      });
+                    },
                     child: const Text('Scan for devices'),
                   )
                 else
@@ -778,7 +668,14 @@ class MyHomePageState extends State<MyHomePage> {
                 const SizedBox(width: 16),
                 if (!_isMock && _connectedDevice != null)
                   TextButton(
-                    onPressed: _disconnect,
+                    onPressed: () async {
+                      await _ble.disconnect();
+                      setState(() {
+                        _connectedDevice = null;
+                        _services = [];
+                        _latestFrame = null;
+                      });
+                    },
                     child: const Text('Disconnect'),
                   ),
               ],
