@@ -4,22 +4,23 @@
 /*-----Uncomment the library and class for your specific hardware-----*/
 //#include "himax.h"  // API to read from the Himax camera found on the Portenta Vision Shield Rev.1
 //HM01B0 himax;
-
-#include "himax.h" // API to read from the Himax camera found on the Portenta Vision Shield Rev.2
-HM01B0 himax;
+// commenting out all of the camera initializations
+//#include "himax.h" // API to read from the Himax camera found on the Portenta Vision Shield Rev.2
+//HM01B0 himax;
 bool scanning = false;
-Camera cam(himax);
-#define IMAGE_MODE CAMERA_GRAYSCALE
-FrameBuffer fb(320,240,2);
+// Commenting out camera lines so I can flash to the M4 core
+//Camera cam(himax);
+//#define IMAGE_MODE CAMERA_GRAYSCALE
+//FrameBuffer fb(320,240,2);
 
 unsigned long lastUpdate = 0;
 uint8_t packet[25];
 BLEDevice esp32; 
 //lets right some BLE code
 // helpfull arduino DOC: https://docs.arduino.cc/tutorials/portenta-h7/ble-connectivity/
-BLEService androidService("19b10000-e8f2-537e-4f6c-d104768a1214");
+BLEService androidService("75");//19b10000-e8f2-537e-4f6c-d104768a1214
 BLECharacteristic androidCharacteristic(
-  "19b10001-e8f2-537e-4f6c-d104768a1214",
+  "80",
   BLERead | BLENotify,
   27    // max length in bytes
 );
@@ -46,7 +47,17 @@ void central() {
     BLECharacteristic myChar = esp32.characteristic("d8450001-6421-4f80-928d-19548483b890");
     if (myChar && myChar.canRead()) {
       myChar.readValue(packet, 25); 
-      Serial.print(packet[3]);
+      float* sensorValues = (float*)&packet[1];
+      // Debugging prints 
+      Serial.print("A: [");
+      Serial.print(sensorValues[0]); Serial.print(", "); // Accel X
+      Serial.print(sensorValues[1]); Serial.print(", "); // Accel Y
+      Serial.print(sensorValues[2]); Serial.print("] "); // Accel Z
+
+      Serial.print("G: [");
+      Serial.print(sensorValues[3]); Serial.print(", "); // Gyro X
+      Serial.print(sensorValues[4]); Serial.print(", "); // Gyro Y
+      Serial.print(sensorValues[5]); Serial.println("]"); // Gyro Z
     }
     else {
 
@@ -69,7 +80,7 @@ void peripheral() {
 void setup() {
   Serial.begin(250000);
 
-  cam.begin(CAMERA_R320x240, IMAGE_MODE, 30);
+  //cam.begin(CAMERA_R320x240, IMAGE_MODE, 30); Turn off camera while using M4 core
 
   if(!BLE.begin()){
     while(1){

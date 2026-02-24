@@ -501,7 +501,7 @@ class MyHomePageState extends State<MyHomePage> {
   Widget _buildCameraView() {
     if (_latestFrame != null) {
       // Attempt to show bytes as an image. If the bytes are not a valid image
-      // this will throw – in that case you’ll need to decode differently.
+      // this will throw – in that case you'll need to decode differently.
       return Image.memory(
         _latestFrame!,
         fit: BoxFit.cover,
