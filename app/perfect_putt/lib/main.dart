@@ -1362,7 +1362,7 @@ class ResultsScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // Green conditions
+              /*/ Green conditions
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(
@@ -1400,7 +1400,7 @@ class ResultsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
+              */
               const SizedBox(height: 16),
 
               // Tips section
