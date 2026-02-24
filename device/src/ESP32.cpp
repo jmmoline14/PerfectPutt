@@ -16,6 +16,8 @@ BLECharacteristic IMUCharacteristic(
   BLERead | BLENotify,
   27    // max length in bytes
 );
+//First FSR pin
+const int FSRPINF = 36; //ADC0 on GPIO 36
 void SetUpPeriph(){
   // Need to have already included BLE.
   BLE.setLocalName("ESP32PERFECTPUTT");
@@ -33,7 +35,8 @@ void setup() {
   bno.begin();
   BLE.begin();
   SetUpPeriph();
-
+  analogReadResolution(12);        // 0–4095
+  analogSetAttenuation(ADC_11db);  // allow full 0–3.3V range
 }
 void loop() { 
   bno.getEvent(&accelEvent, Adafruit_BNO055::VECTOR_ACCELEROMETER);
@@ -76,5 +79,13 @@ void loop() {
   Serial.print(gyroy, 2);   Serial.print(", ");
   Serial.println(gyroz, 2);   // newline ends the line
   
+
+  int adc = analogRead(FSRPINF);
+  float voltage = adc * (3.3 / 4095.0);
+
+  Serial.print("Voltage: ");
+  Serial.print(voltage, 3); // 3 decimal places
+  Serial.println(" V");
+
   delay(1000);
 }
