@@ -6,17 +6,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class PuttingMetrics {
-  final double putterToHoleDist;
-  final double holeCenterOffset;
-  final double ballToHoleDistX;
-  final double ballToHoleDistY;
-  final double swingForce;
-  final double putterAngle;
-  final double followThroughDeg;
-  final bool   successfulShot;
+  double putterToHoleDist;
+  double holeCenterOffset;
+  double ballToHoleDistX;
+  double ballToHoleDistY;
+  double swingForce;
+  double putterAngle;
+  double followThroughDeg;
+  bool   successfulShot;
+  bool   preSwingUpdated;
+  bool   postSwingUpdated;
 
   // Constructor
-  const PuttingMetrics({
+  PuttingMetrics({
     required this.putterToHoleDist,
     required this.holeCenterOffset,
     required this.ballToHoleDistX,
@@ -25,7 +27,23 @@ class PuttingMetrics {
     required this.putterAngle,
     required this.followThroughDeg,
     required this.successfulShot,
+    this.preSwingUpdated = false,
+    this.postSwingUpdated = false,
   });
+
+  // Copier
+  PuttingMetrics copy() {
+    return PuttingMetrics(
+      putterToHoleDist: putterToHoleDist,
+      holeCenterOffset: holeCenterOffset,
+      ballToHoleDistX: ballToHoleDistX,
+      ballToHoleDistY: ballToHoleDistY,
+      swingForce: swingForce,
+      putterAngle: putterAngle,
+      followThroughDeg: followThroughDeg,
+      successfulShot: successfulShot,
+    );
+  }
 
   // Export data for training
   static Future<void> exportMetrics(List<PuttingMetrics> metrics, String subject) async {
@@ -74,6 +92,49 @@ class PuttingMetrics {
     }
 
     return buffer.toString();
+  }
+
+
+  // Updata putting metrics
+  void updatePreSwingData(List<int> bytes) {
+    if (bytes.length < 8) {
+      print("Error, incorrect size packet");
+      throw ArgumentError("BLE Packet not large enough");
+    } else {
+      print("Successful packet transmission!");
+    }
+
+    final data = ByteData.sublistView(Uint8List.fromList(bytes));
+
+    putterToHoleDist = data.getFloat32(0, Endian.little);
+    holeCenterOffset = data.getFloat32(4, Endian.little);
+
+    preSwingUpdated = true;
+    return;
+  }
+  
+  void updatePostSwingData(List<int> bytes) {
+    if (bytes.length < 20) {
+      print("Error, incorrect size packet");
+      print(bytes.length);
+      throw ArgumentError("BLE Packet not large enough");
+    } else {
+      print("Successful packet transmission!");
+    }
+
+    final data = ByteData.sublistView(Uint8List.fromList(bytes));
+    ballToHoleDistX = data.getFloat32(0, Endian.little);
+    ballToHoleDistY = data.getFloat32(4, Endian.little);
+
+    bool successful = ballToHoleDistX.abs() < 1e-6 && ballToHoleDistY.abs() < 1e-6;
+
+    swingForce = data.getFloat32(8, Endian.little);
+    putterAngle = data.getFloat32(12, Endian.little);
+    followThroughDeg = data.getFloat32(16, Endian.little);
+    successfulShot = successful;
+
+    postSwingUpdated = true;
+    return;
   }
 
   // Decode Bluetooth data

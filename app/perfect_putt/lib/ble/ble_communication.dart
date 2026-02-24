@@ -14,27 +14,37 @@ Guid kimuCharUuid = Guid("0075");
 Guid kPuttingServiceUuid = Guid("0075");
 Guid kPuttingCharUuid = Guid("0075");
 
+Guid preSwingDataServiceUuid = Guid("0075");
+Guid preSwingDataCharUuid = Guid("0081");
+Guid postSwingDataServiceUuid = Guid("0075");
+Guid postSwingDataCharUuid = Guid("0080");
+
+
 
 class BleCommunication {
   BluetoothDevice? connectedDevice;
   List<BluetoothService> _services = [];
 
   BluetoothCharacteristic? _cameraChar;
-  BluetoothCharacteristic? _imuChar;
-  BluetoothCharacteristic? _puttingChar;
+  BluetoothCharacteristic? _preSwingDataChar;
+  BluetoothCharacteristic? _postSwingDataChar;
 
   
-  StreamSubscription<List<int>>? _imuSub;
   StreamSubscription<List<int>>? _cameraSub;
-  StreamSubscription<List<int>>? _puttingSub;
+  StreamSubscription<List<int>>? _preSwingDataSub;
+  StreamSubscription<List<int>>? _postSwingDataSub;
   StreamSubscription<List<ScanResult>>? _scanSub;
   Timer? _mockCameraTimer;
 
   final List<BluetoothDevice>devicesList = [];
 
   // Get member variables
-  BluetoothCharacteristic? getPuttingChar() {
-    return _puttingChar;
+  BluetoothCharacteristic? getPreSwingDataChar() {
+    return _preSwingDataChar;
+  }
+  
+  BluetoothCharacteristic? getPostSwingDataChar() {
+    return _postSwingDataChar;
   }
 
   // Scanning
@@ -58,7 +68,8 @@ class BleCommunication {
   Future<void> connect(
     BluetoothDevice device, {
     required Function(List<BluetoothService>) onServicesReady,
-    required Function(PuttingMetrics) onMetricsReceived,
+    required Function(List<int>) onPreSwingReceived,
+    required Function(List<int>) onPostSwingReceived,
     required Function(Uint8List) onFrameReceived,
   }) async {
     FlutterBluePlus.stopScan();
@@ -76,32 +87,57 @@ class BleCommunication {
 
     onServicesReady(_services);
 
-    await _attachPutting(onMetricsReceived);
+    await _attachPreSwingData(onPreSwingReceived);
+    await _attachPostSwingData(onPostSwingReceived);
     await _attachCamera(onFrameReceived);
   }
 
-  // IMU
-  Future<void> _attachPutting(
-    Function(PuttingMetrics) onMetricsReceived,
+  // Pre-swing data
+  Future<void> _attachPreSwingData(
+    Function(List<int>) onPreSwingReceived,
   ) async {
     for (final service in _services) {
-      if (service.uuid == kimuServiceUuid) {
+      if (service.uuid == preSwingDataServiceUuid) {
         for (final characteristic in service.characteristics) {
-          if (characteristic.uuid == kimuCharUuid) {
-            _puttingChar = characteristic;
+          if (characteristic.uuid == preSwingDataCharUuid) {
+            _preSwingDataChar = characteristic;
           }
         }
       }
     }
 
-    if (_puttingChar == null) return;
+    if (_preSwingDataChar == null) return;
 
-    _puttingSub = _puttingChar!.lastValueStream.listen((value) {
-      final metrics = PuttingMetrics.fromBytes(value);
-      onMetricsReceived(metrics);
+    _preSwingDataSub = _preSwingDataChar!.lastValueStream.listen((value) {
+      final metricsBytes = value;
+      onPreSwingReceived(metricsBytes);
     });
 
-    await _puttingChar!.setNotifyValue(true);
+    await _preSwingDataChar!.setNotifyValue(true);
+  }
+
+  // Post-swing data
+  Future<void> _attachPostSwingData(
+    Function(List<int>) onPostSwingReceived,
+  ) async {
+    for (final service in _services) {
+      if (service.uuid == postSwingDataServiceUuid) {
+        for (final characteristic in service.characteristics) {
+          if (characteristic.uuid == postSwingDataCharUuid) {
+            _postSwingDataChar = characteristic;
+          }
+        }
+      }
+    }
+
+    if (_postSwingDataChar == null) return;
+
+    _postSwingDataSub = _postSwingDataChar!.lastValueStream.listen((value) {
+      final metricsBytes = value;
+      onPostSwingReceived(metricsBytes);
+    });
+
+    await _postSwingDataChar!.setNotifyValue(true);
   }
   
   // Camera
@@ -144,7 +180,8 @@ class BleCommunication {
 
   // Disconnect
   Future<void> disconnect() async {
-    await _puttingSub?.cancel();
+    await _preSwingDataSub?.cancel();
+    await _postSwingDataSub?.cancel();
     await _cameraSub?.cancel();
     await _scanSub?.cancel();
 

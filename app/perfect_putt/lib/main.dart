@@ -102,6 +102,7 @@ class MyHomePageState extends State<MyHomePage> {
                                               putterAngle: 0,
                                               followThroughDeg: 0,
                                               successfulShot: false);
+  List<int> _tempMetrics = List.filled(28, 0);
 
   // Storage for all data
   final List<PuttingMetrics> _metricsStorage = [];
@@ -220,10 +221,24 @@ class MyHomePageState extends State<MyHomePage> {
                           _services = services;
                         });
                       },
-                      onMetricsReceived: (metrics) {
+                      onPreSwingReceived: (metricsBytes) {
                         setState(() {
-                          _currMetrics = metrics;
-                          _metricsStorage.add(metrics);
+                          _currMetrics.updatePreSwingData(metricsBytes);
+                          if (_currMetrics.preSwingUpdated && _currMetrics.postSwingUpdated) {
+                            _metricsStorage.add(_currMetrics.copy());
+                            _currMetrics.preSwingUpdated = false;
+                            _currMetrics.postSwingUpdated = false;
+                          }
+                        });
+                      },
+                      onPostSwingReceived: (metricsBytes) {
+                        setState(() {
+                          _currMetrics.updatePostSwingData(metricsBytes);
+                          if (_currMetrics.preSwingUpdated && _currMetrics.postSwingUpdated) {
+                            _metricsStorage.add(_currMetrics.copy());
+                            _currMetrics.preSwingUpdated = false;
+                            _currMetrics.postSwingUpdated = false;
+                          }
                         });
                       },
                       onFrameReceived: (frame) {
@@ -539,17 +554,25 @@ class MyHomePageState extends State<MyHomePage> {
                     children: [
                       ElevatedButton(
                         onPressed: () async {
-                          final puttingChar = _ble.getPuttingChar();
+                          final preSwingDataChar = _ble.getPreSwingDataChar();
+                          final postSwingDataChar = _ble.getPostSwingDataChar();
 
-                          if (puttingChar == null) return;
+                          if (preSwingDataChar == null || postSwingDataChar == null) return;
 
-                          final sub = puttingChar.lastValueStream.listen((value) {
+                          final sub = preSwingDataChar.lastValueStream.listen((value) {
                             setState(() {
-                              widget.readValues[puttingChar.uuid] = value;
+                              widget.readValues[preSwingDataChar.uuid] = value;
                             });
                           });
-                          await puttingChar.read();
+                          final subTwo = postSwingDataChar.lastValueStream.listen((value) {
+                            setState(() {
+                              widget.readValues[postSwingDataChar.uuid] = value;
+                            });
+                          });
+                          await preSwingDataChar.read();
+                          await postSwingDataChar.read();
                           await sub.cancel();
+                          await subTwo.cancel();
                         },
                         child: const Text("Collect swing data"),
                       ),
@@ -564,43 +587,43 @@ class MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Distance between putter and hole: ${_currMetrics.putterToHoleDist}",
+                        "Distance between putter and hole: ${_currMetrics.putterToHoleDist.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset}",
+                        "Center offset of hole before swing: ${_currMetrics.holeCenterOffset.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Horizontal distance between ball and hole after swing: ${_currMetrics.ballToHoleDistX}",
+                        "Horizontal distance between ball and hole after swing: ${_currMetrics.ballToHoleDistX.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Vertical distance between ball and hole after swing: ${_currMetrics.ballToHoleDistY}",
+                        "Vertical distance between ball and hole after swing: ${_currMetrics.ballToHoleDistY.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Force of swing: ${_currMetrics.swingForce}",
+                        "Force of swing: ${_currMetrics.swingForce.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Angle of putter before swing: ${_currMetrics.putterAngle}",
+                        "Angle of putter before swing: ${_currMetrics.putterAngle.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Degree of follow through: ${_currMetrics.followThroughDeg}",
+                        "Degree of follow through: ${_currMetrics.followThroughDeg.toStringAsFixed(2)}",
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
