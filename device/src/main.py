@@ -2,7 +2,11 @@ import pyb
 import time
 time.sleep_ms(1500)
 import sensor
-import image
+import time
+import ml
+import math
+import uos
+import gc
 import struct
 import bluetooth
 import math
@@ -10,7 +14,7 @@ from pyb import ADC, Pin
 from micropython import const
 from machine import I2C
 from bno055 import BNO055
-
+from ml.postprocessing.edgeimpulse import Fomo
 led = Pin('LED_RED', Pin.OUT_PP)
 while True:
     try:
@@ -87,173 +91,215 @@ def ble_irq(event, data):
             print("SUBSCRIBED" if enabled else "UNSUBSCRIBED", "handle", value_handle)
 
 ble.irq(ble_irq)
+impact = 0
+hit_detected = 0
+hit_start = 0
+last_notify_time = 0
+NOTIFY_INTERVAL_MS = 100
+state_practice = 0
+state_automatic = 1
+voltage_threshold = 2.8
+distance = 0
+last_shot_time = 0
+SHOT_COOLDOWN_MS = 2000  
+press_start = 0
+last_button = 1
+LONG_PRESS_MS = 2000
+p = Pin('D0', Pin.IN, Pin.PULL_UP)
+q = Pin('D4', Pin.IN, Pin.PULL_UP) 
+led_red = Pin('LED_RED', Pin.OUT_PP)
+led_green = Pin('LED_GREEN', Pin.OUT_PP)
+led_blue = Pin('LED_BLUE', Pin.OUT_PP)
+# Next few lines set up the neural network information
+min_confidence = 0.8
+try:
+    net = ml.Model("trained.tflite", load_to_fb=uos.stat('trained.tflite')[6] > (gc.mem_free() - (64*1024)), postprocess=Fomo(threshold=min_confidence))
+except Exception as e:
+    raise Exception('Failed to load "trained.tflite" (' + str(e) + ')')
 
-F_px = 146
-golf_ball_d = 0.04267
-golf_hole_d = 0.11
-last_sensor_send = 0
-IMG_W, IMG_H = 320, 240
-CX0, CY0 = IMG_W//2, IMG_H//2
-HIT_COOLDOWN_MS = 500
-last_hit_ms = 0
-WAIT_MS_SWING = 6000
-swing_toggled = False
-FORCE_SWING = 0
-ANGLE_SWING = 0
-DEGREE_SWING = 0
-ELAPSED_SINCE_HIT = 0
-
-def distance(blob, real_d_m):
-    if blob is None or F_px <= 0:
-        return None
-    d_px = (blob.w() + blob.h()) * 0.5
-    if d_px <= 0:
-        return None
-    Z = (F_px * real_d_m) / d_px
-    dx = blob.cx() - CX0
-    dy = blob.cy() - CY0
-    X = Z * (dx / F_px)
-    Y = Z * (dy / F_px)
-    return (X, Y, Z)
-
-def distance_circle(circle, real_d_m):
-    if circle is None or F_px <= 0:
-        return None
-    d_px = circle.r() * 2
-    if d_px <= 0:
-        return None
-    Z = (F_px * real_d_m) / d_px
-    dx = circle.x() - CX0
-    dy = circle.y() - CY0
-    X = Z * (dx / F_px)
-    Y = Z * (dy / F_px)
-    return (X, Y, Z)
-
-def distance_ball_to_hole(ball=None, hole_blob=None):
-    pb = distance_circle(ball, golf_ball_d)
-    ph = distance(hole_blob, golf_hole_d)
-    if pb is None or ph is None:
-        return None, pb, ph
-    dx = ph[0] - pb[0]
-    dy = ph[1] - pb[1]
-    dz = ph[2] - pb[2]
-    return math.sqrt(dx*dx + dy*dy + dz*dz), pb, ph
+try:
+    labels = [line.rstrip('\n') for line in open("labels.txt")]
+except Exception as e:
+    raise Exception('Failed to load "labels.txt" (' + str(e) + ')')
+colors = [
+    (255,   0,   0),
+    (  0, 255,   0),
+    (255, 255,   0),
+    (  0,   0, 255),
+    (255,   0, 255),
+    (  0, 255, 255),
+    (255, 255, 255),
+]
+'''
+# FSM states
+SWING_IDLE = 0
+SWING_BACKSWING = 1
+SWING_DOWNSWING = 2
+SWING_IMPACT = 3
+SWING_FOLLOW = 4
+SWING_DONE = 5
+'''
+# FSM variables
+swing_state = 0
+backswing_start = 0
+downswing_start = 0
+impact_time = 0
+follow_start = 0
+follow_accum = 0.0
+backswing_duration = 0
+downswing_duration = 0
+GYRO_THRESHOLD = 20.0  
+impact = 0.0
+follow = 0.0
+tempo = 0.0
+stability = 0.0
+straightness = 0.0
+direction = 0
+result = 0
 
 while True:
-    img = sensor.snapshot()
-    p = Pin('D0', Pin.IN, Pin.PULL_UP)
-    led = Pin('LED_RED', Pin.OUT_PP)
-    if(p.value() == 0):
-        led.high()
-    else:
-        led.low()
-
     adc_value = adc.read()
     voltage = (adc_value / 4095.0) * 3.3
 
     ax, ay, az = imu.accelerometer()
     gx, gy, gz = imu.gyroscope()
-
-    img_edges = img.copy()
-    img_edges.find_edges(image.EDGE_CANNY, threshold=(50, 120))
-    circles = img_edges.find_circles(threshold=3000, r_min=5, r_max=40,
-                                      x_margin=2, y_margin=2, r_margin=2)
-    best = None
-    best_score = -1.0
-    for c in circles:
-        if c.magnitude() < 3000:
-            continue
-        if c.r() < 5 or c.r() > 40:
-            continue
-        if c.x() < 5 or c.x() > IMG_W - 5:
-            continue
-        if c.y() < 5 or c.y() > IMG_H - 5:
-            continue
-        score = c.magnitude() + (c.r() * 2)
-        if score > best_score:
-            best_score = score
-            best = c
-    if best:
-        img.draw_circle(best.x(), best.y(), best.r(), color=255)
-        img.draw_cross(best.x(), best.y(), color=0, size=10)
-
-    holes = img.find_blobs([(0, 50)], area_threshold=200)
-    best_hole = None
-    best_area = 0
-    for hole in holes:
-        ar = hole.w() / max(1, hole.h())
-        if ar < 0.6 or ar > 1.4:
-            continue
-        if hole.elongation() > 1.5:
-            continue
-        if hole.area() < 250:
-            continue
-        _, _, hole_z = distance(hole, golf_hole_d)
-        if hole_z is None:
-            continue
-        exp_px = int((F_px * golf_hole_d) / hole_z)
-        if abs(hole.w() - exp_px) > 0.15 * exp_px or \
-               abs(hole.h() - exp_px) > 0.15 * exp_px:
-            continue
-        if hole.area() > best_area:
-            best_hole = hole
-            best_area = hole.area()
-
-    if best_hole:
-        img.draw_rectangle(best_hole.rect(), color=255)
-
+    current_time = time.ticks_ms()
+    ax_lin, ay_lin, az_lin = imu.linear_acceleration()
+    accel_mag = math.sqrt(ax_lin*ax_lin + ay_lin*ay_lin + az_lin*az_lin)
+    gyro_mag = math.sqrt(gx*gx + gy*gy + gz*gz)
     clock.tick()
-
-    if (p.value() == 0) and best and best_hole:
-        dist_to_hole, _, _ = distance_ball_to_hole(best, best_hole)
-        if dist_to_hole is not None:
-            pixel_offset = best_hole.cx() - CX0
-            hole_offset_m = (F_px * pixel_offset) / best_hole.w()
-            payload = struct.pack('<ff', dist_to_hole, hole_offset_m)
-            ble.gatts_write(packet_handle, payload)
-            if connected and subscribed:
-                ble.gatts_notify(conn_handle, packet_handle, payload)
-
-    if connected and (time.ticks_ms() - last_sensor_send > 100):
-        try:
-            sensor_data = struct.pack('<fffffff',
-                ax, ay, az,
-                gx, gy, gz,
-                voltage
-            )
-            ble.gatts_write(sensor_handle, sensor_data)
-            if subscribed:
-                ble.gatts_notify(conn_handle, sensor_handle, sensor_data)
-            last_sensor_send = time.ticks_ms()
-        except OSError as e:
-            print("Stream failed:", e)
-            connected = False
-            subscribed = False
-            conn_handle = None
-
-    if voltage < 3.1:
-        roll, pitch, yaw = imu.euler()
-        ANGLE_SWING = abs(pitch)
-        swing_toggled = True
-        FORCE_SWING = voltage
-        ELAPSED_SINCE_HIT = time.ticks_ms()
-
-    if swing_toggled and best and best_hole:
-        now = time.ticks_ms()
-        if time.ticks_diff(now, ELAPSED_SINCE_HIT) >= WAIT_MS_SWING:
-            delta_x_px = best.x() - best_hole.cx()
-            delta_x_m = (F_px * delta_x_px) / (best.r() * 2)
-            delta_y_px = best.y() - best_hole.cy()
-            delta_y_m = (F_px * delta_y_px) / (best.r() * 2)
-            print("transmitted")
-            impact_payload = struct.pack('fffff', delta_x_m, delta_y_m, FORCE_SWING, ANGLE_SWING, DEGREE_SWING)
-            ble.gatts_write(image_handle, impact_payload)
-            if connected and subscribed:
-                ble.gatts_notify(conn_handle, image_handle, impact_payload)
-            swing_toggled = False
-            FORCE_SWING = 0
-            ANGLE_SWING = 0
-            DEGREE_SWING = 0
+    img = sensor.snapshot()
+    if(state_practice == 1):
+        led_red.high()
+        led_green.low()
+    else:
+        led_green.high()
+        led_red.low()
+    # handle button pressses
+    if(p.value() == 0):
+        if(last_button == 1):
+            press_start = time.ticks_ms()
+            last_button = 0
+            
+    else:
+        if(last_button == 0):
+            time_duration = time.ticks_diff(time.ticks_ms(), press_start)
+            if(time_duration >= LONG_PRESS_MS):
+                if(state_automatic == 1):
+                    state_automatic = 0
+                    state_practice = 1
+                else:
+                    state_automatic = 1
+                    state_practice = 0
+            else:
+                if(state_automatic == 1):
+                    distance = distance + 1
+        last_button = 1
+    if(state_practice == 1):
+        distance = 0
+        ball_present = 0
+        
+        detections = net.predict([img])
+        
+        if len(detections) > 1:
+            ball_detections = detections[1]
         else:
-            roll, pitch, yaw = imu.euler()
-            DEGREE_SWING = max(DEGREE_SWING, pitch)
+            ball_detections = []
+        
+        if len(ball_detections) > 0:
+            ball_present = 1
+            print("Ball present")
+            for (x, y, w, h), score in ball_detections:
+                center_x = int(x + (w / 2))
+                center_y = int(y + (h / 2))
+                img.draw_circle(center_x, center_y, 12, color=colors[1])
+    
+        if ball_present == 1:
+            led_blue.low()
+        else:
+            led_blue.high()
+            
+            
+        if swing_state == 0:
+            if gyro_mag > GYRO_THRESHOLD:
+                swing_state = 1
+                backswing_start = current_time
+                print("BACKSWING")
+        elif swing_state == 1:
+            if gyro_mag < GYRO_THRESHOLD:
+                swing_state = 2
+                downswing_start = current_time
+                backswing_duration = time.ticks_diff(current_time, backswing_start)
+                print("DOWNSWING")
+        elif swing_state == 2:
+            if adc_value < 3500:
+                swing_state = 3
+                impact_time = current_time
+                downswing_duration = time.ticks_diff(current_time, downswing_start)
+                # capture at moment of contact
+                impact = accel_mag
+                stability = gyro_mag
+                straightness = math.sqrt(ax_lin*ax_lin + az_lin*az_lin)
+                direction = 1 if ax_lin > 0 else 0
+                tempo = downswing_duration / backswing_duration if backswing_duration > 0 else 0.0
+                print("IMPACT")
+        elif swing_state == 3:
+            if accel_mag > impact:
+                impact = accel_mag
+            follow_accum += gyro_mag * 0.01  # approximate dt
+            if time.ticks_diff(current_time, impact_time) > 500:
+                swing_state = 4
+                follow_start = current_time
+                print("FOLLOW")
+        elif swing_state == 4:
+            follow_accum += gyro_mag * 0.01
+            if time.ticks_diff(current_time, follow_start) > 2000:
+                follow = follow_accum
+                swing_state = 5
+                print("DONE")
+        elif swing_state == 5:
+            result = 1 if ball_present == 1 else 0
+            follow_accum = 0.0
+            swing_state = 0
+            # send final packet once with real values
+            if connected and conn_handle is not None:
+                packet = struct.pack("<fffffBB", impact, follow, tempo, stability, straightness, direction, result)
+                ble.gatts_write(sensor_handle, packet)
+                ble.gatts_notify(conn_handle, sensor_handle, packet)
+    else:
+        # Auto hitter mode, will integrate UART with ESP32 later
+        if(q.value() == 0):
+            current_time = time.ticks_ms()
+            if time.ticks_diff(current_time, last_shot_time) > SHOT_COOLDOWN_MS:
+                print(distance) # This will actually go over UART
+                last_shot_time = current_time
+                
+                
+
+    #Uncomment to test BLE
+                
+    '''   
+    impact = 12.34 #Peak acceleration magnitude around impact, 
+    follow = 45.6 # How much the club rotates after impact
+    tempo = 2.1 # downswing/backswing
+    stability = 3.3 #How much the club is rotating at the exact moment of impact
+    straightness = 0.8 # Acceleration perpendicular to swing axis
+    direction = 1   # right = 1, left = 0
+    result = 0      # miss = 0, hit = 1
+                
+                    # Pack into binary (little endian)
+    current_time = time.ticks_ms()
+    if connected and conn_handle is not None:
+        if time.ticks_diff(current_time, last_notify_time) > NOTIFY_INTERVAL_MS:
+            packet = struct.pack("<fffffBB", impact, follow, tempo, stability, straightness, direction, result)
+            ble.gatts_write(sensor_handle, packet)
+            ble.gatts_notify(conn_handle, sensor_handle, packet)
+            last_notify_time = current_time
+    '''
+                
+
+        
+        
+        
+
+
