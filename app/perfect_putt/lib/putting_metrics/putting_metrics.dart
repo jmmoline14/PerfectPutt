@@ -6,41 +6,34 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class PuttingMetrics {
-  double putterToHoleDist;
-  double holeCenterOffset;
-  double ballToHoleDistX;
-  double ballToHoleDistY;
-  double swingForce;
-  double putterAngle;
+  double impact;
   double followThroughDeg;
+  double tempo;
+  double stability;
+  double straightness;
+  double direction;
   bool   successfulShot;
-  bool   preSwingUpdated;
-  bool   postSwingUpdated;
 
   // Constructor
   PuttingMetrics({
-    required this.putterToHoleDist,
-    required this.holeCenterOffset,
-    required this.ballToHoleDistX,
-    required this.ballToHoleDistY,
-    required this.swingForce,
-    required this.putterAngle,
+    required this.impact,
     required this.followThroughDeg,
+    required this.tempo,
+    required this.stability,
+    required this.straightness,
+    required this.direction,
     required this.successfulShot,
-    this.preSwingUpdated = false,
-    this.postSwingUpdated = false,
   });
 
   // Copier
   PuttingMetrics copy() {
     return PuttingMetrics(
-      putterToHoleDist: putterToHoleDist,
-      holeCenterOffset: holeCenterOffset,
-      ballToHoleDistX: ballToHoleDistX,
-      ballToHoleDistY: ballToHoleDistY,
-      swingForce: swingForce,
-      putterAngle: putterAngle,
+      impact: impact,
       followThroughDeg: followThroughDeg,
+      tempo: tempo,
+      stability: stability,
+      straightness: straightness,
+      direction: direction,
       successfulShot: successfulShot,
     );
   }
@@ -74,19 +67,17 @@ class PuttingMetrics {
   static String metricsToCsvStr(List<PuttingMetrics> metrics) {
     final buffer = StringBuffer();
     buffer.writeln(
-      "putterToHoleDist,ballToHoleDistX,ballToHoleDistY,holeCenterOffset,"
-      "swingForce,putterAngle,followThroughDeg,successfulShot"
+      "impact, followThroughDeg, tempo, stability, straightness, direction, successfulShot"
     );
 
     for (final metric in metrics) {
       buffer.writeln(
-        "${metric.putterToHoleDist},"
-        "${metric.ballToHoleDistX},"
-        "${metric.ballToHoleDistY},"
-        "${metric.holeCenterOffset},"
-        "${metric.swingForce},"
-        "${metric.putterAngle},"
+        "${metric.impact},"
         "${metric.followThroughDeg},"
+        "${metric.tempo},"
+        "${metric.stability},"
+        "${metric.straightness},"
+        "${metric.direction},"
         "${metric.successfulShot ? 1 : 0}"
       );
     }
@@ -96,49 +87,7 @@ class PuttingMetrics {
 
 
   // Updata putting metrics
-  void updatePreSwingData(List<int> bytes) {
-    if (bytes.length < 8) {
-      print("Error, incorrect size packet");
-      throw ArgumentError("BLE Packet not large enough");
-    } else {
-      print("Successful packet transmission!");
-    }
-
-    final data = ByteData.sublistView(Uint8List.fromList(bytes));
-
-    putterToHoleDist = data.getFloat32(0, Endian.little);
-    holeCenterOffset = data.getFloat32(4, Endian.little);
-
-    preSwingUpdated = true;
-    return;
-  }
-  
-  void updatePostSwingData(List<int> bytes) {
-    if (bytes.length < 20) {
-      print("Error, incorrect size packet");
-      print(bytes.length);
-      throw ArgumentError("BLE Packet not large enough");
-    } else {
-      print("Successful packet transmission!");
-    }
-
-    final data = ByteData.sublistView(Uint8List.fromList(bytes));
-    ballToHoleDistX = data.getFloat32(0, Endian.little);
-    ballToHoleDistY = data.getFloat32(4, Endian.little);
-
-    bool successful = ballToHoleDistX.abs() < 1e-6 && ballToHoleDistY.abs() < 1e-6;
-
-    swingForce = data.getFloat32(8, Endian.little);
-    putterAngle = data.getFloat32(12, Endian.little);
-    followThroughDeg = data.getFloat32(16, Endian.little);
-    successfulShot = successful;
-
-    postSwingUpdated = true;
-    return;
-  }
-
-  // Decode Bluetooth data
-  static PuttingMetrics fromBytes(List<int> bytes) {
+  void updateMetrics(List<int> bytes) {
     if (bytes.length < 28) {
       print("Error, incorrect size packet");
       throw ArgumentError("BLE Packet not large enough");
@@ -147,20 +96,17 @@ class PuttingMetrics {
     }
 
     final data = ByteData.sublistView(Uint8List.fromList(bytes));
-    final ballToHoleX = data.getFloat32(8, Endian.little);
-    final ballToHoleY = data.getFloat32(12, Endian.little);
 
-    bool successful = ballToHoleX.abs() < 1e-6 && ballToHoleY.abs() < 1e-6;
+    impact = data.getFloat32(0, Endian.little);
+    followThroughDeg = data.getFloat32(4, Endian.little);
+    tempo = data.getFloat32(4, Endian.little);
+    stability = data.getFloat32(4, Endian.little);
+    straightness = data.getFloat32(4, Endian.little);
+    direction = data.getFloat32(4, Endian.little);
+    double successfulShotBytes = data.getFloat32(4, Endian.little);
 
-    return PuttingMetrics(
-      putterToHoleDist: data.getFloat32(0, Endian.little),
-      holeCenterOffset: data.getFloat32(4, Endian.little),
-      ballToHoleDistX: ballToHoleX,
-      ballToHoleDistY: ballToHoleY,
-      swingForce: data.getFloat32(16, Endian.little),
-      putterAngle: data.getFloat32(20, Endian.little),
-      followThroughDeg: data.getFloat32(24, Endian.little),
-      successfulShot: successful,
-    );
+    successfulShot = successfulShotBytes > 0.99;
+
+    return;
   }
 }
