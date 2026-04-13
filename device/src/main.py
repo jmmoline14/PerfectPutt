@@ -140,6 +140,7 @@ SWING_FOLLOW = 4
 SWING_DONE = 5
 '''
 # FSM variables
+done_start = 0
 swing_state = 0
 backswing_start = 0
 downswing_start = 0
@@ -156,6 +157,7 @@ stability = 0.0
 straightness = 0.0
 direction = 0
 result = 0
+swing_done_ind = 0
 
 while True:
     adc_value = adc.read()
@@ -163,14 +165,21 @@ while True:
 
     ax, ay, az = imu.accelerometer()
     gx, gy, gz = imu.gyroscope()
+    heading, roll, pitch = imu.euler()
     current_time = time.ticks_ms()
     ax_lin, ay_lin, az_lin = imu.linear_acceleration()
     accel_mag = math.sqrt(ax_lin*ax_lin + ay_lin*ay_lin + az_lin*az_lin)
-    gyro_mag = math.sqrt(gx*gx + gy*gy + gz*gz)
+    if(gy > 0):
+        gyro_mag = math.sqrt(gx*gx + gy*gy)
+    else:
+        gyro_mag = -1 * math.sqrt(gx*gx + gy*gy)
     clock.tick()
     img = sensor.snapshot()
     if(state_practice == 1):
-        led_red.high()
+        if(swing_done_ind == 1):
+            led_red.low()
+        else:
+            led_red.high()
         led_green.low()
     else:
         led_green.high()
@@ -218,21 +227,28 @@ while True:
             led_blue.low()
         else:
             led_blue.high()
-            
-            
+        #print(accel_mag)
+        
+        
         if swing_state == 0:
-            if gyro_mag > GYRO_THRESHOLD:
+            if time.ticks_diff(current_time, done_start) < 4000:
+                swing_done_ind = 1
+            elif (gz > 0.12):
+                swing_done_ind = 0
                 swing_state = 1
                 backswing_start = current_time
                 print("BACKSWING")
+        
         elif swing_state == 1:
-            if gyro_mag < GYRO_THRESHOLD:
+            if gz < -0.12:
                 swing_state = 2
                 downswing_start = current_time
                 backswing_duration = time.ticks_diff(current_time, backswing_start)
                 print("DOWNSWING")
+            elif time.ticks_diff(current_time, backswing_start) > 750:
+                swing_state = 0
         elif swing_state == 2:
-            if adc_value < 3500:
+            if pitch < -90:
                 swing_state = 3
                 impact_time = current_time
                 downswing_duration = time.ticks_diff(current_time, downswing_start)
@@ -243,6 +259,10 @@ while True:
                 direction = 1 if ax_lin > 0 else 0
                 tempo = downswing_duration / backswing_duration if backswing_duration > 0 else 0.0
                 print("IMPACT")
+            elif time.ticks_diff(current_time, downswing_start) > 1000:
+                swing_state = 0
+        
+        
         elif swing_state == 3:
             if accel_mag > impact:
                 impact = accel_mag
@@ -251,6 +271,7 @@ while True:
                 swing_state = 4
                 follow_start = current_time
                 print("FOLLOW")
+        
         elif swing_state == 4:
             follow_accum += gyro_mag * 0.01
             if time.ticks_diff(current_time, follow_start) > 2000:
@@ -258,14 +279,17 @@ while True:
                 swing_state = 5
                 print("DONE")
         elif swing_state == 5:
+            done_start = current_time
             result = 1 if ball_present == 1 else 0
             follow_accum = 0.0
             swing_state = 0
+            print(impact)
             # send final packet once with real values
             if connected and conn_handle is not None:
-                packet = struct.pack("<fffffBB", impact, follow, tempo, stability, straightness, direction, result)
+                packet = struct.pack("<fffffff", impact, follow, tempo, stability, straightness, direction, result)
                 ble.gatts_write(sensor_handle, packet)
                 ble.gatts_notify(conn_handle, sensor_handle, packet)
+        
     else:
         # Auto hitter mode, will integrate UART with ESP32 later
         if(q.value() == 0):
@@ -278,24 +302,24 @@ while True:
 
     #Uncomment to test BLE
                 
-    '''   
-    impact = 12.34 #Peak acceleration magnitude around impact, 
-    follow = 45.6 # How much the club rotates after impact
+       
+    #impact = 12.34 #Peak acceleration magnitude around impact, 
+    #follow = 45.6 # How much the club rotates after impact
     tempo = 2.1 # downswing/backswing
     stability = 3.3 #How much the club is rotating at the exact moment of impact
     straightness = 0.8 # Acceleration perpendicular to swing axis
-    direction = 1   # right = 1, left = 0
+    direction = 1   # right = 1, left = 0, ball not detected = 0.5
     result = 0      # miss = 0, hit = 1
                 
                     # Pack into binary (little endian)
     current_time = time.ticks_ms()
     if connected and conn_handle is not None:
         if time.ticks_diff(current_time, last_notify_time) > NOTIFY_INTERVAL_MS:
-            packet = struct.pack("<fffffBB", impact, follow, tempo, stability, straightness, direction, result)
+            packet = struct.pack("<fffffff", impact, follow, tempo, stability, straightness, direction, result)
             ble.gatts_write(sensor_handle, packet)
             ble.gatts_notify(conn_handle, sensor_handle, packet)
             last_notify_time = current_time
-    '''
+    
                 
 
         
