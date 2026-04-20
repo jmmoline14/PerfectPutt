@@ -15,6 +15,7 @@ from micropython import const
 from machine import I2C
 from bno055 import BNO055
 from ml.postprocessing.edgeimpulse import Fomo
+from pyb import UART
 led = Pin('LED_RED', Pin.OUT_PP)
 while True:
     try:
@@ -31,7 +32,8 @@ while True:
         else:
             led.low()
         time.sleep_ms(500)
-
+uart = UART(1, 115200)
+uart.init(115200, bits=8, parity=None, stop=1)
 clock = time.clock()
 adc = ADC(Pin('A0'))
 i2c3 = I2C(3)
@@ -101,12 +103,12 @@ state_automatic = 1
 voltage_threshold = 2.8
 distance = 0
 last_shot_time = 0
-SHOT_COOLDOWN_MS = 2000  
+SHOT_COOLDOWN_MS = 2000
 press_start = 0
 last_button = 1
 LONG_PRESS_MS = 2000
 p = Pin('D0', Pin.IN, Pin.PULL_UP)
-q = Pin('D4', Pin.IN, Pin.PULL_UP) 
+q = Pin('D4', Pin.IN, Pin.PULL_UP)
 led_red = Pin('LED_RED', Pin.OUT_PP)
 led_green = Pin('LED_GREEN', Pin.OUT_PP)
 led_blue = Pin('LED_BLUE', Pin.OUT_PP)
@@ -146,10 +148,9 @@ backswing_start = 0
 downswing_start = 0
 impact_time = 0
 follow_start = 0
-follow_accum = 0.0
 backswing_duration = 0
 downswing_duration = 0
-GYRO_THRESHOLD = 20.0  
+GYRO_THRESHOLD = 20.0
 impact = 0.0
 follow = 0.0
 tempo = 0.0
@@ -158,7 +159,7 @@ straightness = 0.0
 direction = 0
 result = 0
 swing_done_ind = 0
-
+impact_pitch = 0
 while True:
     adc_value = adc.read()
     voltage = (adc_value / 4095.0) * 3.3
@@ -189,7 +190,7 @@ while True:
         if(last_button == 1):
             press_start = time.ticks_ms()
             last_button = 0
-            
+
     else:
         if(last_button == 0):
             time_duration = time.ticks_diff(time.ticks_ms(), press_start)
@@ -207,14 +208,14 @@ while True:
     if(state_practice == 1):
         distance = 0
         ball_present = 0
-        
+
         detections = net.predict([img])
-        
+
         if len(detections) > 1:
             ball_detections = detections[1]
         else:
             ball_detections = []
-        
+
         if len(ball_detections) > 0:
             ball_present = 1
             print("Ball present")
@@ -222,14 +223,14 @@ while True:
                 center_x = int(x + (w / 2))
                 center_y = int(y + (h / 2))
                 img.draw_circle(center_x, center_y, 12, color=colors[1])
-    
+
         if ball_present == 1:
             led_blue.low()
         else:
             led_blue.high()
-        #print(accel_mag)
-        
-        
+        #print(pitch)
+
+
         if swing_state == 0:
             if time.ticks_diff(current_time, done_start) < 4000:
                 swing_done_ind = 1
@@ -238,7 +239,7 @@ while True:
                 swing_state = 1
                 backswing_start = current_time
                 print("BACKSWING")
-        
+
         elif swing_state == 1:
             if gz < -0.12:
                 swing_state = 2
@@ -254,6 +255,7 @@ while True:
                 downswing_duration = time.ticks_diff(current_time, downswing_start)
                 # capture at moment of contact
                 impact = accel_mag
+                impact_pitch = pitch
                 stability = gyro_mag
                 straightness = math.sqrt(ax_lin*ax_lin + az_lin*az_lin)
                 direction = 1 if ax_lin > 0 else 0
@@ -261,56 +263,57 @@ while True:
                 print("IMPACT")
             elif time.ticks_diff(current_time, downswing_start) > 1000:
                 swing_state = 0
-        
-        
+
+
         elif swing_state == 3:
             if accel_mag > impact:
                 impact = accel_mag
-            follow_accum += gyro_mag * 0.01  # approximate dt
             if time.ticks_diff(current_time, impact_time) > 500:
                 swing_state = 4
                 follow_start = current_time
                 print("FOLLOW")
-        
+
         elif swing_state == 4:
-            follow_accum += gyro_mag * 0.01
+            if (abs(pitch - impact_pitch) > follow):
+                follow = abs(pitch-impact_pitch)
             if time.ticks_diff(current_time, follow_start) > 2000:
-                follow = follow_accum
                 swing_state = 5
                 print("DONE")
         elif swing_state == 5:
             done_start = current_time
             result = 1 if ball_present == 1 else 0
-            follow_accum = 0.0
             swing_state = 0
-            print(impact)
+            print(follow)
             # send final packet once with real values
             if connected and conn_handle is not None:
                 packet = struct.pack("<fffffff", impact, follow, tempo, stability, straightness, direction, result)
                 ble.gatts_write(sensor_handle, packet)
                 ble.gatts_notify(conn_handle, sensor_handle, packet)
-        
+
     else:
         # Auto hitter mode, will integrate UART with ESP32 later
         if(q.value() == 0):
             current_time = time.ticks_ms()
             if time.ticks_diff(current_time, last_shot_time) > SHOT_COOLDOWN_MS:
+                msg = "{}\n".format(distance)  # newline helps ESP32 parsing
+                uart.write(msg)
                 print(distance) # This will actually go over UART
                 last_shot_time = current_time
-                
-                
+                distance = 0
+
+
 
     #Uncomment to test BLE
-                
-       
-    #impact = 12.34 #Peak acceleration magnitude around impact, 
+
+    '''
+    #impact = 12.34 #Peak acceleration magnitude around impact,
     #follow = 45.6 # How much the club rotates after impact
     tempo = 2.1 # downswing/backswing
     stability = 3.3 #How much the club is rotating at the exact moment of impact
     straightness = 0.8 # Acceleration perpendicular to swing axis
     direction = 1   # right = 1, left = 0, ball not detected = 0.5
     result = 0      # miss = 0, hit = 1
-                
+
                     # Pack into binary (little endian)
     current_time = time.ticks_ms()
     if connected and conn_handle is not None:
@@ -319,11 +322,11 @@ while True:
             ble.gatts_write(sensor_handle, packet)
             ble.gatts_notify(conn_handle, sensor_handle, packet)
             last_notify_time = current_time
-    
-                
 
-        
-        
-        
+
+    '''
+
+
+
 
 
