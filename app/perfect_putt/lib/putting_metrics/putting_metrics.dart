@@ -99,11 +99,11 @@ class PuttingMetrics {
 
     impact = data.getFloat32(0, Endian.little);
     followThroughDeg = data.getFloat32(4, Endian.little);
-    tempo = data.getFloat32(4, Endian.little);
-    stability = data.getFloat32(4, Endian.little);
-    straightness = data.getFloat32(4, Endian.little);
-    direction = data.getFloat32(4, Endian.little);
-    double successfulShotBytes = data.getFloat32(4, Endian.little);
+    tempo = data.getFloat32(8, Endian.little);
+    stability = data.getFloat32(12, Endian.little);
+    straightness = data.getFloat32(16, Endian.little);
+    direction = data.getFloat32(20, Endian.little);
+    double successfulShotBytes = data.getFloat32(24, Endian.little);
 
     successfulShot = successfulShotBytes > 0.99;
 

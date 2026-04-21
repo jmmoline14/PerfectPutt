@@ -1,0 +1,8 @@
+Red means auto-hitter
+Green means practice mode (before seeing the ball)
+Orange means packet is done transmitting
+Blue means it sees the ball
+
+Bottom button hold three second to switch modes
+In automatic mode tapping the button increases the distance in feet
+In automatic mode top button fires

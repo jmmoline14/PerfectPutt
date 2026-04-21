@@ -103,7 +103,7 @@ class PuttingFeedback {
     // Data Summary (for debugging)
     dataSummary = """
       Data Summary
-      ━━━━━━━━━━━━━━━━━━━━
+      
       Impact: ${metrics.impact.toStringAsFixed(2)}
       Follow Through: ${metrics.followThroughDeg.toStringAsFixed(1)}
       Tempo: ${metrics.tempo.toStringAsFixed(2)}

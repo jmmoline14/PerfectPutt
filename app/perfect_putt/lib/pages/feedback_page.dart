@@ -1,99 +1,107 @@
 import 'package:flutter/material.dart';
-import 'session_ready_page.dart';
 import 'instructions_page.dart';
 import '../widgets/page_layout.dart';
-import '../putting_feedback/putting_feedback.dart';
 import '../globals/globals.dart';
-
+import '../widgets/feedback_card.dart';
 
 class FeedbackPage extends StatelessWidget {
   const FeedbackPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final m = currMetricsGlobal;
+    final f = currFeedback;
+
     return PageLayout(
       title: "Feedback",
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            currFeedback.resultsMessage,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Putt result
+            Text(
+              f.resultsMessage,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Feedback details
-          Text(currFeedback.impactMessage),
-          Text(currFeedback.followThroughMessage),
-          Text(currFeedback.tempoMessage),
-          Text(currFeedback.stabilityMessage),
-          Text(currFeedback.straightnessMessage),
-          Text(currFeedback.directionMessage),
+            // All feedback
+            FeedbackCard(
+              label: "Direction",
+              value: m.direction,
+              minOk: 0.1,
+              maxOk: 0.9,
+              message: f.directionMessage,
+            ),
+            
+            FeedbackCard(
+              label: "Impact",
+              value: m.impact,
+              minOk: 5.0,
+              maxOk: 15.0,
+              message: f.impactMessage,
+            ),
 
-          // Debugging metrics
-          Text(currFeedback.dataSummary),
+            FeedbackCard(
+              label: "Follow Through",
+              value: m.followThroughDeg,
+              minOk: 40.0,
+              maxOk: 80.0,
+              message: f.followThroughMessage,
+            ),
 
-          const Text("Click below to view instructions or swing again."),
-          const SizedBox(height: 20),
+            FeedbackCard(
+              label: "Tempo",
+              value: m.tempo,
+              minOk: 0.4,
+              maxOk: 0.6,
+              message: f.tempoMessage,
+            ),
 
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const SessionReadyPage()),
-              );
-            },
-            child: const Text("Swing Again"),
-          ),
+            FeedbackCard(
+              label: "Stability",
+              value: m.stability,
+              minOk: 0.0,
+              maxOk: 15.0,
+              message: f.stabilityMessage,
+            ),
 
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const InstructionsPage()),
-              );
-            },
-            child: const Text("View Instructions"),
-          ),
-        ],
+            FeedbackCard(
+              label: "Straightness",
+              value: m.straightness,
+              minOk: 0.0,
+              maxOk: 3.0,
+              message: f.straightnessMessage,
+            ),
+
+            const SizedBox(height: 20),
+
+            const Text("Click below to swing again."),
+
+            const SizedBox(height: 20),
+
+            // Swing again button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const InstructionsPage(),
+                    ),
+                  );
+                },
+                child: const Text("Swing Again"),
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
-}
-
-class _ConditionRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _ConditionRow({
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey.shade700,
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 }

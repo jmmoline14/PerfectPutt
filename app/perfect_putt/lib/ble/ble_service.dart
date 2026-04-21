@@ -1,12 +1,23 @@
 // lib/services/ble_service.dart
-import 'dart:typed_data';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:perfect_putt/globals/globals.dart';
 import 'ble_communication.dart';
 import '../putting_metrics/putting_metrics.dart';
 
 class BleService {
   // Singleton pattern
   static final BleService _instance = BleService._internal();
+
+  // BLE state
+  final ValueNotifier<BluetoothDevice?> connectedDeviceNotifier =
+    ValueNotifier<BluetoothDevice?>(null);
+  
+  List<BluetoothService> myServices = [];
+  final List<BluetoothDevice> devicesList = <BluetoothDevice>[];
+  final Map<Guid, List<int>> readValues = <Guid, List<int>>{};
   
   factory BleService() {
     return _instance;
@@ -36,38 +47,45 @@ class BleService {
 
   // Start scanning for devices
   Future<void> startScan(void Function(List<BluetoothDevice>) onDevicesUpdated) async {
-    await _ble.startScan(onDevicesUpdated);
+    await _ble.startScan((devices) {
+      devicesList.clear();
+      devicesList.addAll(devices);
+      onDevicesUpdated(devicesList);
+    });
   }
 
   // Connect to a device
-  Future<void> connect(BluetoothDevice device) async {
+  Future<void> connect(BluetoothDevice device, VoidCallback? onUpdated) async {
     await _ble.connect(
       device,
       onServicesReady: (services) {
+        myServices.clear();
+        myServices.addAll(services);
+
+        connectedDeviceNotifier.value = device;
+
+        onUpdated?.call();
         print("Services discovered: ${services.length}");
       },
       onPreSwingReceived: (bytes) {
-        // Handle your single data stage here
+        // Handles all data now
         try {
           currMetrics.updateMetrics(bytes);
+          currMetricsGlobal = currMetrics.copy();
           print("Metrics updated: ${currMetrics.impact}");
         } catch (e) {
           print("Error updating metrics: $e");
         }
       },
-      onPostSwingReceived: (bytes) {
-        // If you're not using this anymore, you can leave it empty
-        // or remove it from BleCommunication entirely
-      },
-      onFrameReceived: (frame) {
-        // Handle camera frames if needed
-      },
+      onPostSwingReceived: (bytes) {}, // Not using
+      onFrameReceived: (frame) {}, // Not using
     );
   }
 
   // Disconnect from device
   Future<void> disconnect() async {
     await _ble.disconnect();
+    connectedDeviceNotifier.value = null;
   }
 
   // Save current metrics to history
@@ -99,6 +117,7 @@ class BleService {
   }
 
   // Request a camera frame
+  // Also not using
   Future<void> requestFrame() async {
     await _ble.requestFrame();
   }

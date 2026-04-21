@@ -1,20 +1,25 @@
 // lib/pages/bluetooth_page.dart
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../ble/ble_service.dart';
+import '../widgets/page_layout.dart';
 
-class BluetoothPage extends StatefulWidget {
-  const BluetoothPage({super.key});
+class NewBluetoothPage extends StatefulWidget {
+  const NewBluetoothPage({super.key});
 
   @override
-  State<BluetoothPage> createState() => _BluetoothPageState();
+  State<NewBluetoothPage> createState() => _NewBluetoothPageState();
 }
 
 
 
-class _BluetoothPageState extends State<BluetoothPage> {
+class _NewBluetoothPageState extends State<NewBluetoothPage> {
   final BleService bleService = BleService();
 
   // Build page view of devices
@@ -90,42 +95,26 @@ class _BluetoothPageState extends State<BluetoothPage> {
     for (BluetoothDevice device in bleService.devicesList) {
       if (device.platformName == "PERFECTPUTT") {
         containers.add(
-          SizedBox(
-            height: 60,
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Text(
-                        device.advName.isEmpty
-                            ? (device.platformName.isEmpty
-                                ? '(unknown device)'
-                                : device.platformName)
-                            : device.advName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        device.remoteId.toString(),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  child: const Text(
-                    'Connect',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                  onPressed: () {
-                    bleService.connect(device, () {
-                      setState(() {});
-                    });
-                  },
-                ),
-              ],
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            child: ListTile(
+              title: Text(
+                device.advName.isEmpty
+                    ? (device.platformName.isEmpty
+                        ? '(unknown device)'
+                        : device.platformName)
+                    : device.advName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(device.remoteId.toString()),
+              trailing: TextButton(
+                child: const Text('Connect'),
+                onPressed: () {
+                  bleService.connect(device, () {
+                    setState(() {});
+                  });
+                },
+              ),
             ),
           ),
         );
@@ -196,43 +185,54 @@ class _BluetoothPageState extends State<BluetoothPage> {
   }
 
   Widget _buildView() {
+    final device = bleService.connectedDevice;
+
     return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        // CONTROL BUTTONS
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: () async {
-                await requestPermissions();
-                bleService.startScan((devices) {
-                  setState(() {});
-                });
-              },
-              child: const Text('Scan for devices'),
-            ),
+        const SizedBox(height: 20),
 
-            const SizedBox(width: 16),
-
-            if (bleService.connectedDevice != null)
-              TextButton(
-                onPressed: () async {
-                  await bleService.disconnect();
-                  setState(() {});
-                },
-                child: const Text('Disconnect'),
-              ),
-          ],
+        // STATUS
+        Text(
+          device != null
+              ? "Connected to ${device.platformName.isNotEmpty ? device.platformName : "Device"}"
+              : "No device connected",
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 20),
 
-        // DEVICE / SERVICES VIEW
-        Expanded(
-          child: bleService.connectedDevice != null
-              ? _buildConnectDeviceView()
-              : _buildListViewOfDevices(),
-        ),
+        // CONNECT / DISCONNECT ACTIONS
+        if (device == null)
+          ElevatedButton(
+            onPressed: () async {
+              await requestPermissions();
+              bleService.startScan((devices) {
+                setState(() {});
+              });
+            },
+            child: const Text('Scan for Devices'),
+          ),
+
+        if (device != null)
+          ElevatedButton(
+            onPressed: () async {
+              await bleService.disconnect();
+              setState(() {});
+            },
+            child: const Text('Disconnect'),
+          ),
+
+        const SizedBox(height: 20),
+
+        // DEVICE LIST (ONLY WHEN NOT CONNECTED)
+        if (device == null)
+          Expanded(
+            child: _buildListViewOfDevices(),
+          ),
       ],
     );
   }

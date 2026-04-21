@@ -15,10 +15,12 @@ Guid kPuttingServiceUuid = Guid("0075");
 Guid kPuttingCharUuid = Guid("0075");
 
 Guid preSwingDataServiceUuid = Guid("0075");
-Guid preSwingDataCharUuid = Guid("0081");
+Guid preSwingDataCharUuid = Guid("0075");
+
+/***********************NOT USING*****************************/
 Guid postSwingDataServiceUuid = Guid("0075");
 Guid postSwingDataCharUuid = Guid("0080");
-
+/***********************NOT USING*****************************/
 
 
 class BleCommunication {
